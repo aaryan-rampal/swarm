@@ -1,50 +1,57 @@
 # Swarm
 
 ## Overview
-Swarm is a large-scale reasoning trace evaluation platform that runs 10-20 LLMs across multiple providers with 5 repetitions per prompt, captures full reasoning traces, and automatically evaluates reasoning quality.
-
+OmniTrace is a prompt benchmarking platform. Input a task (e.g., "summarize my top 3 most important emails"), and it:
+1. Generates synthetic data + judging criteria + optimized prompt
+2. Runs the prompt across 20 models (5 reps each) via OpenRouter
+3. Evaluates results and aggregates metrics
+4. Outputs a markdown report for one-shotting into Cursor
 ## Agent Architecture
 
-### 1. Eval Designer (Spec Generation Agent)
-**Purpose**: Generates universal prompts and judging criteria for benchmark execution.
+### 1. Brainstorming Agent
+**Purpose**: Generates synthetic test data, judging criteria, and optimized prompt from a user's task description.
 
 **Input**:
-- Task description
-- Dataset
-- Tool list
-- Providers/models to test
-- Run counts
+- User task description (e.g., "summarize my top 3 most important emails")
+- Specialized system prompt for brainstorming
 
-**Output**: JSON Benchmark Spec containing:
-- Universal prompt (provider-agnostic)
-- Global judging criteria (cost, latency, tool correctness, format compliance)
-- Task-specific rubric items
-- JSON schema convertible to Weave eval criteria
+**Output**:
+- `synthetic_data.json`: Test cases for evaluation
+- `judging_criteria.json`: Evaluation rubric and metrics
+- `prompt_template.md`: Optimized prompt template
+- `weave_eval_config.py`: Weave eval function configuration
 
 **Key Responsibilities**:
-- Create consistent, provider-agnostic prompt template
-- Define machine-checkable criteria (JSON validation, required fields, tool calls)
-- Generate LLM-judge rubrics with explicit scales and anchors
-- Specify failure modes and disqualifiers
+- Design realistic synthetic data that covers edge cases
+- Define clear, machine-checkable evaluation criteria
+- Create a prompt template that works across providers
+- Generate Weave-compatible eval scoring functions
+
+**System Prompt Focus**:
+- Think like a prompt engineer
+- Consider failure modes and edge cases
+- Design criteria that align with user intent
+- Make criteria LLM-judge friendly
 
 ---
 
 ### 2. Multi-Model Runner Agent
-**Purpose**: Executes benchmarks across 10-20 models with 5 repetitions each.
+**Purpose**: Executes the prompt across 20 models (5 repetitions each) via OpenRouter.
 
 **Input**:
-- Universal prompt from Eval Designer
-- Dataset
-- List of models/providers
-- Configuration (temperature, seeds, repetitions)
+- Synthetic data from Brainstorming Agent
+- Prompt template from Brainstorming Agent
+- List of 20 models to test
 
 **Output**:
-- Stored results for each run:
+- Stored results for each run (100 runs per model):
   ```json
   {
+    "model": "openai/gpt-4o",
     "prompt": "...",
+    "input_data": {...},
+    "output": "...",
     "reasoning_trace": "...",
-    "final_answer": "...",
     "tokens_in": 1200,
     "tokens_out": 800,
     "latency_ms": 1500,
@@ -53,153 +60,120 @@ Swarm is a large-scale reasoning trace evaluation platform that runs 10-20 LLMs 
   ```
 
 **Key Responsibilities**:
-- Parallel execution across providers
+- Parallel execution via OpenRouter routing
 - Capture reasoning traces (explicit CoT or hidden scratchpad)
 - Track metrics: latency, tokens, cost, timestamps
-- Support providers: OpenAI, Anthropic, Gemini, Azure, OpenRouter, Vertex
+- All model calls go through OpenRouter for unified routing
 
 **Execution**: 
-- 20 prompts × 5 repetitions = 100 runs per model
+- 20 synthetic cases × 5 repetitions = 100 runs per model
 - 20 models = 2,000 total evaluations
 - Uses asyncio.gather for parallelization
 
 ---
 
 ### 3. Judge Engine Agent
-**Purpose**: Evaluates reasoning quality using hybrid deterministic + LLM-judge scoring.
+**Purpose**: Evaluates outputs against judging criteria using Weave eval framework.
 
-**Two-Level Evaluation**:
+**Input**:
+- Results from Multi-Model Runner
+- Judging criteria from Brainstorming Agent
 
-**A. Final Answer Quality**:
-- Correctness
-- Completeness
-- Factuality
-
-**B. Reasoning Trace Quality**:
-- Logical coherence
-- Internal consistency
-- Evidence usage
-- Hallucination detection
-- Step validity
-
-**Output**:
+**Output per run**:
 ```json
 {
   "correctness_score": 0.85,
-  "reasoning_score": 0.78,
-  "hallucination_flag": false,
+  "quality_score": 0.78,
+  "trace_score": 0.90,
+  "composite_score": 0.82,
   "justification": "..."
 }
 ```
 
-**Judging Criteria**:
+**Judging Categories**:
+- **Correctness**: Did the output meet requirements?
+- **Quality**: Is the output well-structured and useful?
+- **Reasoning Trace**: Is the reasoning logical and coherent?
 
-**Global Metrics**:
-- Cost (USD, tokens, cost per correct answer)
-- Latency (p50, p95)
-- Tool correctness (allowed tools, correct arguments)
-- Format compliance (strict JSON, required fields)
-- Safety/Policy gates (auto-fail if violated)
-
-**Task Rubric**:
-- Correctness (0-10 scale, weight 0.4)
-- Tooling quality (hybrid checks, weight 0.2)
-- Reasoning trace quality (0-10 scale, weight 0.3)
-- Evidence usage (0-10 scale, weight 0.1)
-
-**Deterministic Checks**:
-- JSON validity
-- Required fields present
-- Tool calls match allowed tools
-- Citations present
-- Output format compliance
+**Implementation**:
+- Weave eval functions for deterministic checks
+- LLM-judge for subjective scoring
+- Composite score calculation
 
 ---
 
 ### 4. Aggregator Agent
-**Purpose**: Computes statistical metrics across multiple runs to measure stability and consistency.
+**Purpose**: Computes statistical metrics and selects the best model.
 
-**Input**: Results from Judge Engine (5 runs per prompt per model)
+**Input**: Scored results from Judge Engine
 
-**Output per model**:
+**Output**:
 
-**Performance Metrics**:
-- Mean accuracy
-- Mean reasoning score
-- Failure rate
-- Hallucination %
+**Global Metrics** (across all prompts ever evaluated):
+- Model reliability rankings
+- Cost-performance trends
+- Latency distributions
+- Cross-model consistency
 
-**Stability Metrics**:
-- Variance across 5 runs
-- Score standard deviation
-- Trace similarity score
-
-**Efficiency Metrics**:
-- Cost per run
+**Prompt-Specific Metrics** (for current task):
+- Mean correctness per model
+- Mean quality per model
+- Mean composite score
 - Cost per correct answer
-- Tokens per reasoning step
-- Time to first token
-- Total latency
+- Tokens used per answer
+- Latency p50/p95
 
-**Composite Score Formula**:
-```
-Composite = 0.4 * correctness
-          + 0.4 * reasoning_quality
-          + 0.1 * consistency
-          - 0.1 * hallucination_penalty
+**Best Model Selection**:
+```python
+composite = 0.5 * correctness + 0.3 * quality + 0.1 * reasoning - 0.1 * cost_penalty
 ```
 
 ---
 
-### 5. Weave Integration Agent
-**Purpose**: Compiles benchmark spec into Weave eval hooks and mirrors traces for visualization.
+### 5. Report Generator Agent
+**Purpose**: Outputs a markdown document ready to paste into Cursor.
 
 **Input**:
-- JSON Benchmark Spec from Eval Designer
-- Evaluation results from Runner + Judge
+- Aggregated metrics from Aggregator
+- Synthetic data and prompt template from Brainstorming Agent
+- Top model recommendation
 
-**Output**:
-- Weave trace captures
-- Eval function mappings
-- Metadata for leaderboard
-
-**Integration Strategy**:
-1. Use Weave for trace capture + visualization
-2. Keep benchmark spec provider-agnostic in backend
-3. Write "compiler" to convert scoring into Weave eval hooks
-4. Optionally mirror traces into Weave for demo explorer
-
-**Minimal Integration** (for hackathon):
-- Store everything in Postgres + custom leaderboard UI
-- Optionally "mirror" traces into Weave for wow-factor trace explorer
-- Avoid locking into Weave's exact evaluator model
+**Output**: Markdown document containing:
+- **Task Summary**: What was tested
+- **Best Model**: Recommended model with composite score
+- **Optimized Prompt**: The prompt template that worked best
+- **Evaluation Criteria**: How results were judged
+- **Sample Synthetic Data**: Test cases used
+- **Metrics Table**:
+  - Model rankings (correctness, quality, cost, latency)
+  - Best value picks (fastest, cheapest, most accurate)
+- **Weave Integration**: Links to trace viewer in Weave
+- **Cursor Instructions**: How to one-shot the best prompt
 
 ---
 
 ## Agent Orchestration Flow
 
 ```
-1. Eval Designer
-   ↓ (Benchmark Spec JSON)
+1. User Input Task
+   ↓ "summarize my top 3 most important emails"
 
-2. Multi-Model Runner
-   ↓ (Results for each run)
+2. Brainstorming Agent
+   ↓ (synthetic_data.json, judging_criteria.json, prompt_template.md)
 
-3. Judge Engine (parallel)
-   ↓ (Scores + justifications)
+3. Multi-Model Runner (parallel across 20 models)
+   ↓ (2,000 results with traces and metrics)
 
-4. Aggregator
-   ↓ (Statistical metrics)
+4. Judge Engine (parallel via Weave)
+   ↓ (scored results with justifications)
 
-5. Frontend Dashboard
+5. Aggregator
+   ↓ (global metrics + prompt metrics + best model)
+
+6. Report Generator
    ↓
-   Leaderboard, Trace Explorer, Charts
+   Markdown document → Paste into Cursor
 ```
-
-**Parallel Execution**:
-- Runner executes all models in parallel
-- Judge engine evaluates results in parallel
-- Aggregator computes final metrics
 
 ---
 
@@ -207,57 +181,54 @@ Composite = 0.4 * correctness
 
 **Backend**:
 - FastAPI (Python)
-- LiteLLM (multi-provider abstraction)
-- Postgres (Supabase) for results storage
-- Redis for async job queue
+- OpenRouter SDK for unified routing across providers
+- Weave (wandb) for eval framework and trace capture
 - asyncio for parallel execution
 
 **Frontend**:
-- Next.js 14 (App Router)
-- TailwindCSS + shadcn/ui
-- React Query
-- Recharts/Tremor for visualization
+- React + TypeScript
+- Vite
+- Visualization libraries for criteria + agent swarm observability
 
 **Infra**:
-- Vercel (frontend)
-- Railway/Render (backend)
-- Supabase (database + auth)
+- Weave for trace storage and visualization
+- OpenRouter for LLM routing
 
 ---
 
 ## Killer Differentiators
 
-1. **Multi-run consistency evaluation** – Most benchmarks test once; we test 5x to measure reliability
-2. **Cross-provider reasoning trace comparison** – Compare GPT-4o vs Claude vs Gemini side-by-side at trace level
-3. **Automated reasoning quality scoring** – LLM-judge evaluates logical coherence, hallucination, step validity
-4. **Statistical benchmarking** – Aggregate metrics (mean, std dev, worst-case, consistency scores)
-5. **Cost-quality frontier** – Pareto graph showing best tradeoffs
+1. **Zero-shot prompt testing** – No manual prompt engineering, just describe the task
+2. **Auto-generated synthetic data** – LLM creates realistic test cases automatically
+3. **Multi-model reliability** – Test 20 models (5 reps each) to find the best one
+4. **Cursor-ready output** – Get a complete markdown report you can paste and run
+5. **Weave trace replay** – Full reasoning traces saved for debugging in Weave UI
 
 ---
 
 ## Demo Narrative
 
-"Most benchmarks test final answers once. We evaluate reasoning reliability across stochastic runs and providers."
+"I want to test which AI is best at summarizing my emails, but I don't have time to write prompts and test 20 models."
 
 Demo flow:
-1. Upload incident dataset
-2. Eval Designer generates spec + universal prompt
-3. Run benchmark across 20 models (5 repetitions each)
-4. Watch leaderboards populate live
-5. Show: same prompt, 5 traces from same model, reveal inconsistency
-6. Compare against another provider
-7. Show cost-quality frontier graph
-8. Dive into trace explorer for side-by-side reasoning
+1. Type: "summarize my top 3 most important emails"
+2. Brainstorming Agent generates synthetic email data + evaluation rubric + prompt
+3. Runner executes across 20 models (GPT-4o, Claude 3.5, Gemini, etc.) with 5 repetitions each
+4. Watch Weave traces populate live
+5. Get markdown report: "Best model: Claude 3.5 Sonnet (92% accuracy, $0.03/email)"
+6. Copy the optimized prompt
+7. Paste into Cursor with the recommended model
+8. One-shot the actual task
 
 ---
 
 ## Potential Names
 
-- TraceArena
-- OmniBench
-- TraceForge
-- EvalForge
-- BenchStack
-- ReasonRank
+- PromptArena
+- BenchMVP
+- AutoPrompt
+- PromptForge
+- EvalStack
+- PromptRank
 
-**Recommended**: TraceArena (competitive, hackathon energy)
+**Recommended**: PromptArena (competitive, hackathon energy)

@@ -1,0 +1,56 @@
+Metadata-Version: 2.4
+Name: omnitrace-backend
+Version: 0.1.0
+Summary: Minimal backend test harness for OpenRouter + Weave
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: fastapi>=0.116.0
+Requires-Dist: httpx>=0.28.0
+Requires-Dist: pydantic-settings>=2.10.0
+Requires-Dist: uvicorn[standard]>=0.35.0
+Requires-Dist: weave>=0.51.0
+
+# OmniTrace Backend (Test Harness)
+
+This is a minimal backend test setup that:
+- calls OpenRouter,
+- traces execution in Weave,
+- runs a first-pass brainstorming agent seeded from your brainstorming skill prompt.
+
+## 1) Environment variables
+
+Add these values to `.env`:
+
+```bash
+OPENROUTER_API_KEY=<your_openrouter_api_key>
+OPENROUTER_MODEL=openai/gpt-4o-mini
+WEAVE_PROJECT=omnitrace-dev
+
+# Optional
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+OPENROUTER_SITE_URL=http://localhost:8000
+OPENROUTER_SITE_NAME=OmniTrace Local Test
+BRAINSTORMING_SKILL_PATH=~/.config/opencode/skills/superpowers/brainstorming/SKILL.md
+```
+
+## 2) Install dependencies
+
+```bash
+.venv/bin/python -m uv pip install -e .
+```
+
+## 3) Run API
+
+```bash
+.venv/bin/python -m uvicorn app.main:app --reload
+```
+
+## 4) Trigger a test run
+
+```bash
+curl -X POST "http://127.0.0.1:8000/brainstorm/test" \
+  -H "Content-Type: application/json" \
+  -d '{"task":"Summarize my top 3 most important emails and propose an eval rubric."}'
+```
+
+If everything is configured, you should get a JSON response and a corresponding trace in Weave.

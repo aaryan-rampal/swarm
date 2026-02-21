@@ -1,3 +1,7 @@
+**pycache
+**.pyc
+**.env
+backend/.env
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -145,3 +149,4 @@ cython_debug/
 # OS files
 .DS_Store
 Thumbs.db
+>>>>>>> 92fae9baccc5e4cd069884476cf586b2484e2610
