@@ -1,11 +1,8 @@
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
-
+from app.agents.planner_agent import run_planner_chat
 from app.schemas import (
     PlannerConfirmResponse,
-    PlannerChatRequest,
-    PlannerChatResponse,
     PlannerSessionCreateResponse,
     PlannerSessionMessageRequest,
     PlannerSessionMessageResponse,
@@ -15,6 +12,7 @@ from app.schemas import (
 )
 from app.swarm_orchestrator import run_sample_swarm
 from app.swarm_runtime import runtime
+from fastapi import APIRouter, HTTPException
 
 router = APIRouter()
 
@@ -44,6 +42,11 @@ async def get_planner_session(session_id: UUID) -> PlannerSessionResponse:
     )
 
 
+def _session_messages_to_chat(session_messages: list[dict]) -> list[dict[str, str]]:
+    """Convert runtime session messages to chat format [{role, content}]."""
+    return [{"role": m["role"], "content": m["content"]} for m in session_messages]
+
+
 @router.post(
     "/sessions/{session_id}/messages", response_model=PlannerSessionMessageResponse
 )
@@ -57,18 +60,26 @@ async def planner_session_message(
         raise HTTPException(status_code=404, detail="Session not found") from exc
 
     runtime.add_session_message(session_id, role="user", content=payload.message)
-    draft_prompt = "Summarize the top 3 most important emails with rationale, action items, and urgency labels."
-    assistant_message = (
-        "Got it. I will prioritize legal/compliance and payroll-critical emails, include one"
-        " medium-priority update, and ignore spam. Press confirm when this direction looks good."
+
+    chat_messages = _session_messages_to_chat(session["messages"][:-1])
+    try:
+        result = await run_planner_chat(
+            messages=chat_messages,
+            user_message=payload.message,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    runtime.add_session_message(
+        session_id, role="assistant", content=result["assistant_message"]
     )
-    runtime.add_session_message(session_id, role="assistant", content=assistant_message)
+    draft_prompt = result.get("draft_prompt") or ""
     session["draft_prompt"] = draft_prompt
-    session["ready_to_confirm"] = True
+    session["ready_to_confirm"] = result.get("draft_spec") is not None
 
     return PlannerSessionMessageResponse(
-        assistant_message=assistant_message,
-        ready_to_confirm=True,
+        assistant_message=result["assistant_message"],
+        ready_to_confirm=session["ready_to_confirm"],
         draft_prompt=draft_prompt,
     )
 
@@ -89,14 +100,6 @@ async def planner_session_confirm(session_id: UUID) -> PlannerConfirmResponse:
         run_id=run["run_id"],
         status=runtime.runs[run["run_id"]]["status"],
         sse_sample_path=runtime.runs[run["run_id"]]["sse_sample_path"],
-    )
-
-
-@router.post("/chat", response_model=PlannerChatResponse)
-async def planner_chat(payload: PlannerChatRequest) -> PlannerChatResponse:
-    return PlannerChatResponse(
-        assistant_message="Stub: planning response",
-        draft_spec=None,
     )
 
 

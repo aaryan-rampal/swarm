@@ -1,8 +1,7 @@
 from uuid import uuid4
 
-from fastapi import APIRouter
-
 from app.schemas import CreateBenchmarkRequest, CreateBenchmarkResponse
+from fastapi import APIRouter
 
 router = APIRouter()
 

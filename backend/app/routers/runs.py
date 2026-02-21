@@ -1,8 +1,5 @@
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
-from fastapi.responses import StreamingResponse
-
 from app.schemas import (
     AnalysisChatRequest,
     AnalysisChatResponse,
@@ -19,6 +16,8 @@ from app.schemas import (
     StartRunResponse,
 )
 from app.swarm_runtime import runtime
+from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi.responses import StreamingResponse
 
 router = APIRouter()
 
