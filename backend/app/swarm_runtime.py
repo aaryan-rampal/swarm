@@ -109,20 +109,15 @@ class SwarmRuntime:
         run = self.runs[run_id]
         output_dir = Path("artifacts/sse")
         output_dir.mkdir(parents=True, exist_ok=True)
+        for existing_file in output_dir.glob("*.txt"):
+            existing_file.unlink()
+
         sample_text = "".join(self.to_sse_block(event) for event in run["events"])
-
-        run_output_path = output_dir / f"run_{run_id}.txt"
-        run_output_path.write_text(
-            sample_text,
-            encoding="utf-8",
-        )
-
         sample_output_path = output_dir / "sample_output.txt"
-        if not sample_output_path.exists():
-            sample_output_path.write_text(sample_text, encoding="utf-8")
+        sample_output_path.write_text(sample_text, encoding="utf-8")
 
-        run["sse_sample_path"] = str(run_output_path)
-        return str(run_output_path)
+        run["sse_sample_path"] = str(sample_output_path)
+        return str(sample_output_path)
 
 
 runtime = SwarmRuntime()

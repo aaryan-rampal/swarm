@@ -29,8 +29,10 @@ def _build_reasoning_messages(scenario: dict[str, Any]) -> list[dict[str, str]]:
         {
             "role": "system",
             "content": (
-                "You are a rigorous inbox triage assistant. Think through priority"
-                " ranking carefully and produce concise action-oriented conclusions."
+                "You are a rigorous inbox triage assistant. Explain your reasoning"
+                " out loud with explicit steps before the final answer. Use this format:"
+                " STEP <n>: <what you are doing> and REASON: <why this step matters>."
+                " Keep each step concise and grounded in the provided emails."
             ),
         },
         {
@@ -86,6 +88,37 @@ async def run_sample_swarm(run_id: UUID) -> None:
 
     chunk_index = 0
     stream_messages = _build_reasoning_messages(scenario)
+
+    runtime.add_run_event(
+        run_id,
+        agent_id="multi-model-runner",
+        event_type="tool_call_started",
+        phase="execution",
+        content="Calling OpenRouter chat/completions with streaming enabled.",
+        model=model,
+        weave={
+            "project": weave_project,
+            "trace_id": trace_id,
+            "call_id": f"call-{run_id}-tool-start",
+            "parent_call_id": root_call_id,
+        },
+    )
+    runtime.add_run_event(
+        run_id,
+        agent_id="multi-model-runner",
+        event_type="plan_step_started",
+        phase="execution",
+        content="Step-by-step reasoning narration started.",
+        model=model,
+        weave={
+            "project": weave_project,
+            "trace_id": trace_id,
+            "call_id": f"call-{run_id}-plan-start",
+            "parent_call_id": root_call_id,
+        },
+    )
+
+    usage_payload: dict[str, Any] | None = None
     try:
         async for chunk in chat_completion_stream(
             messages=stream_messages,
@@ -100,6 +133,21 @@ async def run_sample_swarm(run_id: UUID) -> None:
 
             content_delta = traced_chunk.get("content_delta")
             if content_delta:
+                runtime.add_run_event(
+                    run_id,
+                    agent_id="multi-model-runner",
+                    event_type="plan_step_thought",
+                    phase="execution",
+                    content=content_delta,
+                    model=model,
+                    weave={
+                        "project": weave_project,
+                        "trace_id": trace_id,
+                        "call_id": f"call-{run_id}-plan-thought-{chunk_index}",
+                        "parent_call_id": root_call_id,
+                    },
+                    chunk_index=chunk_index,
+                )
                 runtime.add_run_event(
                     run_id,
                     agent_id="multi-model-runner",
@@ -138,6 +186,7 @@ async def run_sample_swarm(run_id: UUID) -> None:
 
             usage = traced_chunk.get("usage")
             if usage:
+                usage_payload = usage
                 runtime.add_run_event(
                     run_id,
                     agent_id="multi-model-runner",
@@ -169,6 +218,36 @@ async def run_sample_swarm(run_id: UUID) -> None:
                 "parent_call_id": root_call_id,
             },
         )
+
+    runtime.add_run_event(
+        run_id,
+        agent_id="multi-model-runner",
+        event_type="tool_call_result",
+        phase="execution",
+        content="OpenRouter streaming call finished.",
+        model=model,
+        weave={
+            "project": weave_project,
+            "trace_id": trace_id,
+            "call_id": f"call-{run_id}-tool-result",
+            "parent_call_id": root_call_id,
+        },
+        usage=usage_payload,
+    )
+    runtime.add_run_event(
+        run_id,
+        agent_id="multi-model-runner",
+        event_type="plan_step_completed",
+        phase="execution",
+        content="Step-by-step reasoning narration completed.",
+        model=model,
+        weave={
+            "project": weave_project,
+            "trace_id": trace_id,
+            "call_id": f"call-{run_id}-plan-complete",
+            "parent_call_id": root_call_id,
+        },
+    )
 
     runtime.add_run_event(
         run_id,
