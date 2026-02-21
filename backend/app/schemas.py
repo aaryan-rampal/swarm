@@ -60,6 +60,16 @@ class PlannerConfirmResponse(BaseModel):
     sse_sample_path: str
 
 
+class PlannerChatRequest(BaseModel):
+    conversation_id: UUID
+    message: str
+
+
+class PlannerChatResponse(BaseModel):
+    assistant_message: str
+    draft_spec: dict | None = None
+
+
 class ValidateSpecRequest(BaseModel):
     spec: dict
 
