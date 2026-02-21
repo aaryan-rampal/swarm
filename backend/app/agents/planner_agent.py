@@ -12,7 +12,7 @@ SWARM_PLANNER_ADDENDUM = """
 
 ## CRITICAL: Swarm Benchmark Spec Output
 
-You are designing a complete benchmark scenario—the same structure as app/scenarios/email_priority/. Generate ALL three: prompt (markdown), input_data (synthetic test data), and evaluation (markdown rubric). The user clicks "Start Swarm" to run it.
+You are designing a complete benchmark scenario. Generate ALL three: prompt (markdown), input_data (synthetic test data), and eval_questions (structured yes/no checks). The user clicks "Start Swarm" to run it.
 
 **TRIGGER PHRASES — When the user says any of these, output the JSON spec IMMEDIATELY. Do NOT ask another question:**
 - "looks good" / "sounds good" / "yes" / "that's fine" / "nope that's fine"
@@ -22,7 +22,7 @@ You are designing a complete benchmark scenario—the same structure as app/scen
 
 **RULE: If user says "don't ask more questions" or "just build it", output the spec immediately with sensible defaults.**
 
-**Required format:** Your message MUST end with a JSON block with these three fields. Structure like app/scenarios/email_priority/:
+**Required format:** Your message MUST end with a JSON block with these three fields:
 
 1. **prompt** or **prompt_template** — Full markdown like prompt.md:
    - `# Prompt: [Title]`
@@ -30,27 +30,40 @@ You are designing a complete benchmark scenario—the same structure as app/scen
    - `## Instructions` — numbered list (1. 2. 3. ...)
    - `## Output Format` — exact structure the model must return (e.g. markdown template)
 
-2. **input_data** — Actual synthetic test data (NOT placeholders). For email tasks use:
-   ```json
-   {"emails": [{"id":"e1","from":"Sender Name <email@example.com>","subject":"...","received_at":"YYYY-MM-DDTHH:MM:SSZ","body":"...","priority":"important|kinda_important|spam"}, ...]}
-   ```
-   Generate 5–7 diverse, realistic emails. For non-email tasks, use whatever structure fits (e.g. `{"items": [...]}`).
+2. **input_data** — Actual synthetic test data (NOT placeholders) appropriate for the task domain.
+   - For example: `{"items": [...]}`, `{"tickets": [...]}`, `{"messages": [...]}`, `{"emails": [...]}`, etc.
+   - Generate realistic examples with enough variety to test prioritization/decision quality.
 
-3. **evaluation** — Full markdown like evaluation.md:
-   - `# Evaluation Criteria: [Task name]`
-   - Weighted sections: `## 1) [Criterion] (XX%)`, `## 2) [Criterion] (XX%)`, ...
-   - `## Pass Condition` — score threshold and auto-fail rules
+3. **eval_questions** — A list of yes/no evaluation questions. Each item MUST have exactly:
+   - `id` (str): short id, e.g. "c1", "q2", "r3"
+   - `category` (str): one of correctness, quality, reasoning, usability (or similar)
+   - `question` (str): a specific yes/no question tailored to YOUR input_data
 
-**Example structure:**
+   Generate 20–35 questions across 3–4 categories. Questions must be grounded in your input_data and task requirements (no placeholders).
+
+**Example eval_questions:**
+```json
+"eval_questions": [
+  {"id": "c1", "category": "correctness", "question": "Does the response select exactly 3 highest-priority items?"},
+  {"id": "c2", "category": "correctness", "question": "Is the most time-sensitive item included in the top selection?"},
+  {"id": "q1", "category": "quality", "question": "Are the suggested next actions concrete and specific?"},
+  {"id": "r1", "category": "reasoning", "question": "Does the response justify prioritization using impact and urgency?"}
+]
+```
+
+**Example full structure:**
 ```json
 {
-  "prompt_template": "# Prompt: Summarize My Top Emails\\n\\nYou are an assistant that triages an inbox...\\n\\n## Objective\\n\\nGiven a set of emails, identify the top three...\\n\\n## Instructions\\n\\n1. Prioritize by...\\n2. Include exactly 3...\\n\\n## Output Format\\n\\n```md\\n## Top 3 Emails\\n1. [email_id] - Summary\\n...",
-  "input_data": {"emails": [{"id":"e1","from":"Legal <legal@co.com>","subject":"Action required...","received_at":"2026-02-21T08:10:00Z","body":"...","priority":"important"},{"id":"e2",...}]},
-  "evaluation": "# Evaluation Criteria: Top Email Summarization\\n\\n## 1) Priority Accuracy (40%)\\n\\n- Correctly ranks...\\n\\n## 2) Factual Grounding (25%)\\n\\n...\\n\\n## Pass Condition\\n\\n- Weighted score >= 0.80"
+  "prompt_template": "# Prompt: Prioritize Incoming Work Items\\n\\n...",
+  "input_data": {"items": [{"id":"i1","title":"...", "owner":"...", "due":"...", "details":"..."}, {"id":"i2","title":"...", "owner":"...", "due":"...", "details":"..."}]},
+  "eval_questions": [
+    {"id": "c1", "category": "correctness", "question": "Does the response identify exactly 3 top-priority items?"},
+    {"id": "c2", "category": "correctness", "question": "Is the item with the nearest deadline included?"}
+  ]
 }
 ```
 
-You MUST include all three: prompt_template, input_data (with real synthetic data), and evaluation. Without this JSON block, the user cannot start the benchmark.
+You MUST include all three: prompt_template, input_data (with real synthetic data), and eval_questions. Without this JSON block, the user cannot start the benchmark.
 
 **JSON rules:** Do NOT add // or /* */ comments inside the JSON block—JSON does not support them.
 """

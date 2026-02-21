@@ -15,7 +15,7 @@ from app.schemas import (
     ValidateSpecRequest,
     ValidateSpecResponse,
 )
-from app.swarm_orchestrator import run_swarm
+from app.swarm_orchestrator import normalize_spec, run_swarm
 from app.swarm_runtime import runtime
 from app.trace_exporter import export_run_results
 
@@ -82,7 +82,14 @@ async def planner_session_message(
     draft_prompt = result.get("draft_prompt") or ""
     session["draft_spec"] = draft_spec
     session["draft_prompt"] = draft_prompt
-    session["ready_to_confirm"] = draft_spec is not None
+    ready_to_confirm = False
+    if draft_spec is not None:
+        try:
+            normalize_spec(draft_spec)
+            ready_to_confirm = True
+        except ValueError:
+            ready_to_confirm = False
+    session["ready_to_confirm"] = ready_to_confirm
 
     return PlannerSessionMessageResponse(
         assistant_message=result["assistant_message"],
@@ -132,4 +139,8 @@ async def planner_chat(payload: PlannerChatRequest) -> PlannerChatResponse:
 
 @router.post("/validate", response_model=ValidateSpecResponse)
 async def planner_validate(payload: ValidateSpecRequest) -> ValidateSpecResponse:
+    try:
+        normalize_spec(payload.spec)
+    except ValueError as exc:
+        return ValidateSpecResponse(valid=False, errors=[str(exc)])
     return ValidateSpecResponse(valid=True, errors=[])

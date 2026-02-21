@@ -10,6 +10,7 @@ from uuid import UUID
 import weave
 
 from app.config import get_settings
+from app.eval_questions import eval_questions_to_markdown, validate_eval_questions
 from app.model_registry import ModelSpec
 from app.openrouter_client import chat_completion_stream
 from app.swarm_runtime import runtime
@@ -22,7 +23,7 @@ _DEFAULT_EVALUATION = (
 
 
 def normalize_spec(spec: dict[str, Any]) -> dict[str, Any]:
-    """Normalize arbitrary planner JSON to canonical {prompt, input_data, evaluation}."""
+    """Normalize arbitrary planner JSON to canonical {prompt, input_data, evaluation, eval_questions}."""
     prompt = spec.get("prompt_template") or spec.get("prompt")
     if not prompt:
         raise ValueError("Spec must contain 'prompt_template' or 'prompt'")
@@ -32,18 +33,28 @@ def normalize_spec(spec: dict[str, Any]) -> dict[str, Any]:
         or spec.get("data")
         or {}
     )
-    # If planner output emails as top-level array, wrap for consistency
-    input_data = {"emails": raw_input} if isinstance(raw_input, list) else raw_input
+    # If planner outputs a top-level array, wrap it into a generic object
+    input_data = {"items": raw_input} if isinstance(raw_input, list) else raw_input
+
+    eval_questions: list[dict[str, str]] | None = None
+    if "eval_questions" in spec and spec["eval_questions"] is not None:
+        eval_questions = validate_eval_questions(spec["eval_questions"])
+
     evaluation = (
         spec.get("evaluation")
         or spec.get("rubric")
+        or (eval_questions_to_markdown(eval_questions) if eval_questions else None)
         or _DEFAULT_EVALUATION
     )
-    return {
+
+    result: dict[str, Any] = {
         "prompt": prompt,
         "input_data": input_data,
         "evaluation": evaluation,
     }
+    if eval_questions is not None:
+        result["eval_questions"] = eval_questions
+    return result
 
 
 def _load_scenario() -> dict[str, Any]:
