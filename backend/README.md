@@ -42,3 +42,13 @@ curl -X POST "http://127.0.0.1:8000/brainstorm/test" \
 ```
 
 If everything is configured, you should get a JSON response and a corresponding trace in Weave.
+
+## 5) Trigger a full brainstorming flow test
+
+```bash
+curl -X POST "http://127.0.0.1:8000/brainstorm/full-test" \
+  -H "Content-Type: application/json" \
+  -d '{"task":"Summarize my top 3 most important emails and propose an eval rubric."}'
+```
+
+This returns a single payload containing `synthetic_data`, `judging_criteria`, and `prompt_template`, and logs each model call as a Weave-traced operation.

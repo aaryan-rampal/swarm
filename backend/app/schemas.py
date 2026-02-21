@@ -14,3 +14,10 @@ class BrainstormTestRequest(BaseModel):
 class BrainstormTestResponse(BaseModel):
     model: str
     output: str
+
+
+class BrainstormFullFlowResponse(BaseModel):
+    model: str
+    synthetic_data: dict
+    judging_criteria: dict
+    prompt_template: str
