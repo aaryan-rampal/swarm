@@ -2,6 +2,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
 
+from app.agents.planner_agent import run_planner_chat
 from app.model_registry import load_models
 from app.schemas import (
     PlannerConfirmResponse,
@@ -14,7 +15,7 @@ from app.schemas import (
     ValidateSpecRequest,
     ValidateSpecResponse,
 )
-from app.swarm_orchestrator import run_swarm
+from app.swarm_orchestrator import normalize_spec, run_swarm
 from app.swarm_runtime import runtime
 from app.trace_exporter import export_run_results
 
@@ -46,6 +47,11 @@ async def get_planner_session(session_id: UUID) -> PlannerSessionResponse:
     )
 
 
+def _session_messages_to_chat(session_messages: list[dict]) -> list[dict[str, str]]:
+    """Convert runtime session messages to chat format [{role, content}]."""
+    return [{"role": m["role"], "content": m["content"]} for m in session_messages]
+
+
 @router.post(
     "/sessions/{session_id}/messages", response_model=PlannerSessionMessageResponse
 )
@@ -59,18 +65,35 @@ async def planner_session_message(
         raise HTTPException(status_code=404, detail="Session not found") from exc
 
     runtime.add_session_message(session_id, role="user", content=payload.message)
-    draft_prompt = "Summarize the top 3 most important emails with rationale, action items, and urgency labels."
-    assistant_message = (
-        "Got it. I will prioritize legal/compliance and payroll-critical emails, include one"
-        " medium-priority update, and ignore spam. Press confirm when this direction looks good."
+    chat_messages = _session_messages_to_chat(session["messages"][:-1])
+
+    try:
+        result = await run_planner_chat(
+            messages=chat_messages,
+            user_message=payload.message,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    runtime.add_session_message(
+        session_id, role="assistant", content=result["assistant_message"]
     )
-    runtime.add_session_message(session_id, role="assistant", content=assistant_message)
+    draft_spec = result.get("draft_spec")
+    draft_prompt = result.get("draft_prompt") or ""
+    session["draft_spec"] = draft_spec
     session["draft_prompt"] = draft_prompt
-    session["ready_to_confirm"] = True
+    ready_to_confirm = False
+    if draft_spec is not None:
+        try:
+            normalize_spec(draft_spec)
+            ready_to_confirm = True
+        except ValueError:
+            ready_to_confirm = False
+    session["ready_to_confirm"] = ready_to_confirm
 
     return PlannerSessionMessageResponse(
-        assistant_message=assistant_message,
-        ready_to_confirm=True,
+        assistant_message=result["assistant_message"],
+        ready_to_confirm=session["ready_to_confirm"],
         draft_prompt=draft_prompt,
     )
 
@@ -85,11 +108,18 @@ async def planner_session_confirm(session_id: UUID) -> PlannerConfirmResponse:
     if not session["ready_to_confirm"]:
         raise HTTPException(status_code=400, detail="Session is not ready to confirm")
 
+    spec = session.get("draft_spec")
+    if spec is None:
+        raise HTTPException(status_code=400, detail="No draft spec to run")
+
     models = load_models()
     run = runtime.create_run(session_id)
     run_id = run["run_id"]
 
-    await run_swarm(run_id, models)
+    try:
+        await run_swarm(run_id, models, spec=spec)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     output_dir = export_run_results(run_id)
 
     return PlannerConfirmResponse(
@@ -109,4 +139,8 @@ async def planner_chat(payload: PlannerChatRequest) -> PlannerChatResponse:
 
 @router.post("/validate", response_model=ValidateSpecResponse)
 async def planner_validate(payload: ValidateSpecRequest) -> ValidateSpecResponse:
+    try:
+        normalize_spec(payload.spec)
+    except ValueError as exc:
+        return ValidateSpecResponse(valid=False, errors=[str(exc)])
     return ValidateSpecResponse(valid=True, errors=[])
