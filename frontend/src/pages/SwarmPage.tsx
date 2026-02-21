@@ -605,7 +605,7 @@ type Phase = "selecting" | "running" | "done";
 
 export default function SwarmPage() {
   const navigate = useNavigate();
-  const { userPrompt, addEval, setJudgeResult } = useApp();
+  const { userPrompt, addEval, setJudgeResult, sessionId } = useApp();
   const [judging, setJudging] = useState(false);
   const [judgeError, setJudgeError] = useState<string | null>(null);
 
@@ -637,7 +637,7 @@ export default function SwarmPage() {
       const res = await fetch("/api/runs/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model_ids: selectedIds }),
+        body: JSON.stringify({ model_ids: selectedIds, session_id: sessionId }),
       });
       if (!res.ok) throw new Error(`Start failed: ${res.status}`);
       const data = await res.json();
@@ -763,7 +763,7 @@ export default function SwarmPage() {
       setError(err instanceof Error ? err.message : "Failed to start swarm");
       setPhase("selecting");
     }
-  }, [userPrompt, addEval, setJudgeResult]);
+  }, [userPrompt, addEval, setJudgeResult, sessionId]);
 
   useEffect(() => {
     if (allDone && Object.keys(modelStates).length > 0) {

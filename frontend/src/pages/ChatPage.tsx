@@ -21,25 +21,17 @@ interface PlannerMessageResponse {
   draft_prompt: string;
 }
 
-interface PlannerConfirmResponse {
-  run_id: string;
-  status: string;
-  sse_sample_path: string;
-}
-
 export default function ChatPage() {
   const navigate = useNavigate();
   const {
     setUserPrompt,
     sessionId,
     setSessionId,
-    setRunId,
   } = useApp();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [readyToConfirm, setReadyToConfirm] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [isConfirming, setIsConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [displayedContent, setDisplayedContent] = useState("");
   const [typingIdx, setTypingIdx] = useState(-1);
@@ -132,23 +124,9 @@ export default function ChatPage() {
     }
   };
 
-  const handleApprove = async () => {
-    if (!sessionId || isConfirming || !readyToConfirm) return;
-
-    setIsConfirming(true);
-    setError(null);
-
-    try {
-      const res = await api.post<PlannerConfirmResponse>(
-        `/api/planner/sessions/${sessionId}/confirm`,
-        {}
-      );
-      setRunId(res.run_id);
-      navigate("/swarm", { state: { runId: res.run_id } });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to start swarm");
-      setIsConfirming(false);
-    }
+  const handleApprove = () => {
+    if (!sessionId || !readyToConfirm) return;
+    navigate("/swarm");
   };
 
   return (
@@ -204,11 +182,10 @@ export default function ChatPage() {
                     >
                       <button
                         onClick={handleApprove}
-                        disabled={isConfirming}
-                        className="w-full py-3 px-6 rounded-xl bg-gradient-to-r from-arena-accent to-arena-blue text-white font-semibold text-sm flex items-center justify-center gap-2 hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50"
+                        className="w-full py-3 px-6 rounded-xl bg-gradient-to-r from-arena-accent to-arena-blue text-white font-semibold text-sm flex items-center justify-center gap-2 hover:opacity-90 transition-opacity cursor-pointer"
                       >
                         <Check className="w-4 h-4" />
-                        {isConfirming ? "Starting..." : "Start Swarm"}
+                        Start Swarm
                       </button>
                     </motion.div>
                   )}
@@ -263,14 +240,14 @@ export default function ChatPage() {
                   ? "Connecting..."
                   : "Describe the agent you want to build..."
               }
-              disabled={!sessionId || isLoading || readyToConfirm}
+              disabled={!sessionId || isLoading}
               rows={1}
               className="flex-1 bg-transparent text-black placeholder:text-arena-muted px-5 py-4 resize-none focus:outline-none disabled:opacity-50 text-sm"
               style={{ maxHeight: 120 }}
             />
             <button
               onClick={handleSend}
-              disabled={!input.trim() || isLoading || readyToConfirm || !sessionId}
+              disabled={!input.trim() || isLoading || !sessionId}
               className="m-2 p-2.5 rounded-xl bg-arena-accent text-white disabled:opacity-30 hover:bg-arena-accent/80 transition-colors cursor-pointer disabled:cursor-not-allowed"
             >
               <Send className="w-4 h-4" />
