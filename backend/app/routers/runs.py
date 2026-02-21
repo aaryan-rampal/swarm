@@ -34,6 +34,11 @@ router = APIRouter()
 _runs: dict[str, dict] = {}
 
 
+@router.get("/questions")
+async def get_eval_questions() -> list[dict[str, str]]:
+    return EVAL_QUESTIONS
+
+
 @router.post("", response_model=StartRunResponse)
 async def start_run(payload: StartRunRequest) -> StartRunResponse:
     run_id = uuid4()

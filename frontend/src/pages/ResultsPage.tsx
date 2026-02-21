@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   RadarChart,
@@ -26,8 +26,20 @@ import {
   Bolt,
   DollarSign,
   Target,
+  ChevronDown,
 } from "lucide-react";
 import { useApp, type JudgeSweepResult } from "../store";
+
+type EvalQuestion = { id: string; category: string; question: string };
+
+const API_BASE = "http://localhost:8000";
+
+const CATEGORY_META: Record<string, { label: string; color: string }> = {
+  correctness: { label: "Correctness", color: "#8b5cf6" },
+  quality: { label: "Quality", color: "#3b82f6" },
+  reasoning: { label: "Reasoning", color: "#10b981" },
+  usability: { label: "Usability", color: "#f59e0b" },
+};
 
 const MODEL_META: Record<string, { name: string; color: string; provider: string }> = {
   "gpt-codex": { name: "GPT-Codex", color: "#10b981", provider: "OpenAI" },
@@ -58,12 +70,28 @@ interface ModelScoreRow {
   tokens: number;
 }
 
+function normalizeInverse(value: number, min: number, max: number): number {
+  if (max === min) return 3.5;
+  return Math.min(5, (1 - (value - min) / (max - min)) * 3 + 2);
+}
+
+function computeComposite(row: Omit<ModelScoreRow, "composite">, speedScore: number, tokenScore: number): number {
+  const c = row.correctness * 0.25
+    + row.quality * 0.20
+    + row.reasoning * 0.15
+    + row.usability * 0.20
+    + speedScore * 0.10
+    + tokenScore * 0.10;
+  return parseFloat(c.toFixed(2));
+}
+
 function buildScoreRows(judgeResult: JudgeSweepResult | null): ModelScoreRow[] {
+  let raw: Omit<ModelScoreRow, "composite">[];
+
   if (judgeResult && Object.keys(judgeResult.models).length > 0) {
-    return Object.entries(judgeResult.models).map(([modelId, data]) => {
+    raw = Object.entries(judgeResult.models).map(([modelId, data]) => {
       const meta = MODEL_META[modelId] ?? { name: modelId, color: "#94a3b8", provider: "Unknown" };
       const s = data.scores;
-      const composite = s.overall * 5;
       return {
         id: modelId,
         name: meta.name,
@@ -73,33 +101,146 @@ function buildScoreRows(judgeResult: JudgeSweepResult | null): ModelScoreRow[] {
         quality: s.quality * 5,
         reasoning: s.reasoning * 5,
         usability: s.usability * 5,
-        composite: parseFloat(composite.toFixed(2)),
         latency: data.latency_ms,
         cost: 0,
         tokens: data.tokens_in + data.tokens_out,
       };
-    }).sort((a, b) => b.composite - a.composite);
+    });
+  } else {
+    raw = Object.entries(FALLBACK_SCORES).map(([name, s]) => {
+      const meta = Object.values(MODEL_META).find((m) => m.name === name) ?? { name, color: "#94a3b8", provider: "Unknown" };
+      return {
+        id: name,
+        name: meta.name,
+        color: meta.color,
+        provider: meta.provider,
+        correctness: s.correctness,
+        quality: s.quality,
+        reasoning: s.reasoning,
+        usability: s.usability,
+        latency: s.latency,
+        cost: s.cost,
+        tokens: s.tokens,
+      };
+    });
   }
 
-  return Object.entries(FALLBACK_SCORES).map(([name, s]) => {
-    const meta = Object.values(MODEL_META).find((m) => m.name === name) ?? { name, color: "#94a3b8", provider: "Unknown" };
+  const maxLat = Math.max(...raw.map((r) => r.latency));
+  const minLat = Math.min(...raw.map((r) => r.latency));
+  const maxTok = Math.max(...raw.map((r) => r.tokens));
+  const minTok = Math.min(...raw.map((r) => r.tokens));
+
+  return raw.map((r) => {
+    const speedScore = normalizeInverse(r.latency, minLat, maxLat);
+    const tokenScore = normalizeInverse(r.tokens, minTok, maxTok);
     return {
-      id: name,
-      name: meta.name,
-      color: meta.color,
-      provider: meta.provider,
-      correctness: s.correctness,
-      quality: s.quality,
-      reasoning: s.reasoning,
-      usability: s.usability,
-      composite: s.composite,
-      latency: s.latency,
-      cost: s.cost,
-      tokens: s.tokens,
+      ...r,
+      composite: computeComposite(r, speedScore, tokenScore),
     };
   }).sort((a, b) => b.composite - a.composite);
 }
 
+
+function CategoryAccordion({
+  catKey,
+  label,
+  color,
+  questions,
+  rows,
+  judgeResult,
+}: {
+  catKey: string;
+  label: string;
+  color: string;
+  questions: { id: string; category: string; question: string }[];
+  rows: ModelScoreRow[];
+  judgeResult: JudgeSweepResult | null;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const catScore = useMemo(() => {
+    if (!judgeResult) return null;
+    const allModels = Object.values(judgeResult.models);
+    if (allModels.length === 0) return null;
+    const avg = allModels.reduce((s, m) => s + ((m.scores as unknown as Record<string, number>)[catKey] ?? 0), 0) / allModels.length;
+    return avg;
+  }, [judgeResult, catKey]);
+
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-arena-bg/50 transition-colors cursor-pointer"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-2.5 h-2.5 rounded-full" style={{ background: color }} />
+          <span className="text-sm font-medium text-arena-text">{label}</span>
+          <span className="text-xs text-arena-muted">{questions.length} questions</span>
+        </div>
+        <div className="flex items-center gap-3">
+          {catScore !== null && (
+            <span className="text-xs font-mono font-medium" style={{ color }}>
+              {(catScore * 100).toFixed(0)}% avg
+            </span>
+          )}
+          <ChevronDown
+            className={`w-4 h-4 text-arena-muted transition-transform ${open ? "rotate-180" : ""}`}
+          />
+        </div>
+      </button>
+      {open && (
+        <div className="px-6 pb-4">
+          <div className="rounded-xl border border-arena-border/50 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-arena-border/50 bg-arena-bg/30">
+                  <th className="text-left px-4 py-2.5 text-arena-muted font-medium text-xs w-[50%]">
+                    Question
+                  </th>
+                  {rows.map((r) => (
+                    <th key={r.id} className="text-center px-2 py-2.5 text-arena-muted font-medium text-xs">
+                      {r.name}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {questions.map((q) => (
+                  <tr key={q.id} className="border-b border-arena-border/30 last:border-b-0">
+                    <td className="px-4 py-2.5 text-arena-text/75 text-xs leading-relaxed">
+                      {q.question}
+                    </td>
+                    {rows.map((r) => {
+                      const reverseId = Object.entries(MODEL_META).find(([, m]) => m.name === r.id)?.[0];
+                      const modelData = judgeResult?.models[r.id] ?? (reverseId ? judgeResult?.models[reverseId] : undefined);
+                      const answer = modelData?.answers[q.id];
+                      const isYes = answer?.toLowerCase().startsWith("y");
+                      return (
+                        <td key={r.id} className="text-center px-2 py-2.5">
+                          {answer ? (
+                            <span className={`inline-block w-5 h-5 rounded-full text-xs font-medium leading-5 ${
+                              isYes
+                                ? "bg-emerald-100 text-emerald-700"
+                                : "bg-red-100 text-red-600"
+                            }`}>
+                              {isYes ? "Y" : "N"}
+                            </span>
+                          ) : (
+                            <span className="text-arena-muted/40">—</span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function CustomTooltip({
   active,
@@ -124,43 +265,78 @@ function CustomTooltip({
 }
 
 export default function ResultsPage() {
-  const { judgeResult } = useApp();
+  const { judgeResult, setJudgeResult } = useApp();
   const [copied, setCopied] = useState(false);
+  const [evalQuestions, setEvalQuestions] = useState<EvalQuestion[]>([]);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/runs/questions`)
+      .then((r) => r.json())
+      .then((data: EvalQuestion[]) => setEvalQuestions(data))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (judgeResult && Object.keys(judgeResult.models).length > 0) return;
+    fetch(`${API_BASE}/api/runs/judge`, { method: "POST" })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.models && Object.keys(data.models).length > 0) {
+          setJudgeResult(data);
+        }
+      })
+      .catch(() => {});
+  }, [judgeResult, setJudgeResult]);
 
   const rows = useMemo(() => buildScoreRows(judgeResult), [judgeResult]);
   const isLive = !!judgeResult && Object.keys(judgeResult.models).length > 0;
 
-  const radarData = useMemo(() => [
-    { metric: "Correctness", ...Object.fromEntries(rows.map((r) => [r.name, parseFloat(r.correctness.toFixed(1))])) },
-    { metric: "Quality", ...Object.fromEntries(rows.map((r) => [r.name, parseFloat(r.quality.toFixed(1))])) },
-    { metric: "Reasoning", ...Object.fromEntries(rows.map((r) => [r.name, parseFloat(r.reasoning.toFixed(1))])) },
-    { metric: "Usability", ...Object.fromEntries(rows.map((r) => [r.name, parseFloat(r.usability.toFixed(1))])) },
-  ], [rows]);
+  const radarData = useMemo(() => {
+    const maxLatency = Math.max(...rows.map((r) => r.latency));
+    const minLatency = Math.min(...rows.map((r) => r.latency));
+    const maxTokens = Math.max(...rows.map((r) => r.tokens));
+    const minTokens = Math.min(...rows.map((r) => r.tokens));
+    return [
+      { metric: "Correctness", ...Object.fromEntries(rows.map((r) => [r.name, parseFloat(r.correctness.toFixed(1))])) },
+      { metric: "Quality", ...Object.fromEntries(rows.map((r) => [r.name, parseFloat(r.quality.toFixed(1))])) },
+      { metric: "Reasoning", ...Object.fromEntries(rows.map((r) => [r.name, parseFloat(r.reasoning.toFixed(1))])) },
+      { metric: "Usability", ...Object.fromEntries(rows.map((r) => [r.name, parseFloat(r.usability.toFixed(1))])) },
+      { metric: "Speed", ...Object.fromEntries(rows.map((r) => [r.name, parseFloat(Math.min(5, 5 * (1 - (r.latency - minLatency) / (maxLatency - minLatency || 1)) * 0.6 + 2).toFixed(1))])) },
+      { metric: "Token Efficiency", ...Object.fromEntries(rows.map((r) => [r.name, parseFloat(Math.min(5, 5 * (1 - (r.tokens - minTokens) / (maxTokens - minTokens || 1)) * 0.6 + 2).toFixed(1))])) },
+    ];
+  }, [rows]);
 
-  const barData = useMemo(() => rows.map((r) => ({
-    name: r.name,
-    Correctness: parseFloat(r.correctness.toFixed(2)),
-    Quality: parseFloat(r.quality.toFixed(2)),
-    Reasoning: parseFloat(r.reasoning.toFixed(2)),
-  })), [rows]);
+  const barData = useMemo(() => {
+    const maxLatency = Math.max(...rows.map((r) => r.latency));
+    const minLatency = Math.min(...rows.map((r) => r.latency));
+    const maxTokens = Math.max(...rows.map((r) => r.tokens));
+    const minTokens = Math.min(...rows.map((r) => r.tokens));
+    return rows.map((r) => ({
+      name: r.name,
+      Correctness: parseFloat(r.correctness.toFixed(2)),
+      Quality: parseFloat(r.quality.toFixed(2)),
+      Reasoning: parseFloat(r.reasoning.toFixed(2)),
+      Usability: parseFloat(r.usability.toFixed(2)),
+      Speed: parseFloat(Math.min(5, 5 * (1 - (r.latency - minLatency) / (maxLatency - minLatency || 1)) * 0.6 + 2).toFixed(2)),
+      "Token Eff.": parseFloat(Math.min(5, 5 * (1 - (r.tokens - minTokens) / (maxTokens - minTokens || 1)) * 0.6 + 2).toFixed(2)),
+    }));
+  }, [rows]);
 
   const bestRow = rows[0];
   const fastestRow = [...rows].sort((a, b) => a.latency - b.latency)[0];
   const bestModel = { name: bestRow.name, color: bestRow.color, provider: bestRow.provider };
 
   const dynamicReport = useMemo(() => {
+    const maxLat = Math.max(...rows.map((r) => r.latency));
+    const minLat = Math.min(...rows.map((r) => r.latency));
+    const maxTok = Math.max(...rows.map((r) => r.tokens));
+    const minTok = Math.min(...rows.map((r) => r.tokens));
+    const speed = (r: typeof rows[0]) => Math.min(5, 5 * (1 - (r.latency - minLat) / (maxLat - minLat || 1)) * 0.6 + 2);
+    const tokenEff = (r: typeof rows[0]) => Math.min(5, 5 * (1 - (r.tokens - minTok) / (maxTok - minTok || 1)) * 0.6 + 2);
     const rankingRows = rows.map((r, i) =>
-      `| ${i + 1} | ${r.name} | ${r.composite.toFixed(2)} | ${r.correctness.toFixed(1)} | ${r.quality.toFixed(1)} | ${r.latency.toLocaleString()}ms | — |`
+      `| ${i + 1} | ${r.name} | ${r.composite.toFixed(2)} | ${r.correctness.toFixed(1)} | ${r.quality.toFixed(1)} | ${r.reasoning.toFixed(1)} | ${r.usability.toFixed(1)} | ${speed(r).toFixed(1)} | ${tokenEff(r).toFixed(1)} |`
     ).join("\n");
     return `# Swarm Evaluation Report
-
-## Task Summary
-
-**Objective**: Build an agent that reads emails and summarizes the important ones
-**Models Tested**: ${rows.length} | **Judged by**: ${isLive ? "Gemini 2.5 Flash (LLM-as-a-Judge)" : "Hardcoded fallback scores"}
-**Eval Questions**: 35 yes/no questions across 4 categories
-
----
 
 ## Best Model: ${bestRow.name}
 
@@ -171,34 +347,38 @@ export default function ResultsPage() {
 | Quality | ${bestRow.quality.toFixed(2)} |
 | Reasoning | ${bestRow.reasoning.toFixed(2)} |
 | Usability | ${bestRow.usability.toFixed(2)} |
-| Judge Latency | ${bestRow.latency.toLocaleString()} ms |
+| Speed | ${speed(bestRow).toFixed(2)} |
+| Token Efficiency | ${tokenEff(bestRow).toFixed(2)} |
 
 ---
 
 ## Model Rankings
 
-| Rank | Model | Composite | Correctness | Quality | Latency | Cost |
-|------|-------|-----------|-------------|---------|---------|------|
+| Rank | Model | Composite | Correctness | Quality | Reasoning | Usability | Speed | Token Eff. |
+|------|-------|-----------|-------------|---------|-----------|-----------|-------|------------|
 ${rankingRows}
 
 ---
 
 ## Evaluation Method
 
-Each model response was evaluated by **Gemini 2.5 Flash** using 35 yes/no questions:
+Each model response was evaluated across **6 dimensions**:
 
-- **Correctness** (10 questions): Did it pick the right emails and rank them correctly?
-- **Quality** (10 questions): Is the output well-structured, concise, scannable?
-- **Reasoning** (10 questions): Is the prioritization logic sound?
-- **Usability** (5 questions): Is the output actionable and professional?
+- **Correctness** (10 questions, judged by Gemini 2.5 Flash): Did it pick the right emails and rank them correctly?
+- **Quality** (10 questions, judged by Gemini 2.5 Flash): Is the output well-structured, concise, scannable?
+- **Reasoning** (10 questions, judged by Gemini 2.5 Flash): Is the prioritization logic sound?
+- **Usability** (5 questions, judged by Gemini 2.5 Flash): Is the output actionable and professional?
+- **Speed**: Normalized inverse of judge latency (lower latency = higher score)
+- **Token Efficiency**: Normalized inverse of total tokens used (fewer tokens = higher score)
 
-Score = percentage of "yes" answers per category, scaled to 5.0.
+LLM-judged scores = percentage of "yes" answers per category, scaled to 5.0.
+Speed and Token Efficiency are relative rankings normalized to a 2–5 scale.
 
 ---
 
 *Generated by Swarm • ${rows.length} models evaluated • ${new Date().toLocaleDateString()}*
 `;
-  }, [rows, bestRow, isLive]);
+  }, [rows, bestRow]);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(dynamicReport);
@@ -343,6 +523,9 @@ Score = percentage of "yes" answers per category, scaled to 5.0.
                   <Bar dataKey="Correctness" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="Quality" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="Reasoning" fill="#10b981" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Usability" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Speed" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Token Eff." fill="#06b6d4" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </motion.div>
@@ -446,6 +629,39 @@ Score = percentage of "yes" answers per category, scaled to 5.0.
               </table>
             </div>
           </motion.div>
+
+          {/* Evaluation Questions */}
+          {evalQuestions.length > 0 && <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.35 }}
+            className="rounded-2xl bg-arena-card border border-arena-border overflow-hidden"
+          >
+            <div className="px-6 py-4 border-b border-arena-border">
+              <h3 className="text-sm font-semibold text-arena-text">
+                Evaluation Criteria
+              </h3>
+              <p className="text-xs text-arena-muted mt-0.5">
+                {evalQuestions.length} yes/no questions scored by Gemini 2.5 Flash across {Object.keys(CATEGORY_META).length} categories
+              </p>
+            </div>
+            <div className="divide-y divide-arena-border/50">
+              {Object.entries(CATEGORY_META).map(([catKey, catMeta]) => {
+                const catQuestions = evalQuestions.filter((q) => q.category === catKey);
+                return (
+                  <CategoryAccordion
+                    key={catKey}
+                    catKey={catKey}
+                    label={catMeta.label}
+                    color={catMeta.color}
+                    questions={catQuestions}
+                    rows={rows}
+                    judgeResult={judgeResult}
+                  />
+                );
+              })}
+            </div>
+          </motion.div>}
 
           {/* Markdown Report */}
           <motion.div
