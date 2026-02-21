@@ -29,10 +29,10 @@ def _build_reasoning_messages(scenario: dict[str, Any]) -> list[dict[str, str]]:
         {
             "role": "system",
             "content": (
-                "You are a rigorous inbox triage assistant. Explain your reasoning"
-                " out loud with explicit steps before the final answer. Use this format:"
-                " STEP <n>: <what you are doing> and REASON: <why this step matters>."
-                " Keep each step concise and grounded in the provided emails."
+                "You are a rigorous inbox triage assistant. Narrate what you are"
+                " doing out loud while you analyze and rank emails. Speak in natural"
+                " first-person commentary, concise but explicit, grounded only in the"
+                " provided inbox and rubric."
             ),
         },
         {
@@ -106,9 +106,9 @@ async def run_sample_swarm(run_id: UUID) -> None:
     runtime.add_run_event(
         run_id,
         agent_id="multi-model-runner",
-        event_type="plan_step_started",
+        event_type="narration_started",
         phase="execution",
-        content="Step-by-step reasoning narration started.",
+        content="Narration stream started.",
         model=model,
         weave={
             "project": weave_project,
@@ -136,7 +136,7 @@ async def run_sample_swarm(run_id: UUID) -> None:
                 runtime.add_run_event(
                     run_id,
                     agent_id="multi-model-runner",
-                    event_type="plan_step_thought",
+                    event_type="narration_delta",
                     phase="execution",
                     content=content_delta,
                     model=model,
@@ -237,9 +237,9 @@ async def run_sample_swarm(run_id: UUID) -> None:
     runtime.add_run_event(
         run_id,
         agent_id="multi-model-runner",
-        event_type="plan_step_completed",
+        event_type="narration_completed",
         phase="execution",
-        content="Step-by-step reasoning narration completed.",
+        content="Narration stream completed.",
         model=model,
         weave={
             "project": weave_project,

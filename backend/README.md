@@ -91,10 +91,10 @@ SSE now includes chunk-level model events:
 And explicit narrated workflow events:
 
 - `tool_call_started`
-- `plan_step_started`
-- `plan_step_thought`
+- `narration_started`
+- `narration_delta`
 - `tool_call_result`
-- `plan_step_completed`
+- `narration_completed`
 
 Replay run events (cursor optional):
 

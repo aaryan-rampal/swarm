@@ -24,11 +24,11 @@ def test_sample_email_scenario_artifacts_exist() -> None:
 def test_confirm_run_emits_events_and_writes_txt() -> None:
     async def fake_chat_completion_stream(messages, model=None, reasoning=None):  # noqa: ARG001
         yield {
-            "content_delta": "STEP 1: Review inbox and classify urgency.",
+            "content_delta": "I am first scanning legal, payroll, and marketing emails for urgency.",
             "raw": {"choices": [{"delta": {"content": "Top priority email"}}]},
         }
         yield {
-            "content_delta": "STEP 2: Rank legal and payroll first, then include marketing in watchlist.",
+            "content_delta": "Next I am ranking legal and payroll first, then keeping marketing as watchlist.",
             "raw": {"choices": [{"delta": {"content": "Rank legal and payroll"}}]},
         }
         yield {
@@ -91,13 +91,13 @@ def test_confirm_run_emits_events_and_writes_txt() -> None:
         events = events_response.json()["events"]
         assert len(events) >= 8
         assert any(event["event_type"] == "tool_call_started" for event in events)
-        assert any(event["event_type"] == "plan_step_started" for event in events)
-        assert any(event["event_type"] == "plan_step_thought" for event in events)
+        assert any(event["event_type"] == "narration_started" for event in events)
+        assert any(event["event_type"] == "narration_delta" for event in events)
         assert any(event["event_type"] == "llm_content_delta" for event in events)
         assert any(event["event_type"] == "llm_reasoning_delta" for event in events)
         assert any(event["event_type"] == "llm_usage_final" for event in events)
         assert any(event["event_type"] == "tool_call_result" for event in events)
-        assert any(event["event_type"] == "plan_step_completed" for event in events)
+        assert any(event["event_type"] == "narration_completed" for event in events)
         assert any(event["model"] == "google/gemini-3-pro" for event in events)
 
         sample_path = Path(confirm_body["sse_sample_path"])
@@ -105,13 +105,14 @@ def test_confirm_run_emits_events_and_writes_txt() -> None:
         assert sample_path.exists()
         sample_text = sample_path.read_text(encoding="utf-8")
         assert "event: tool_call_started" in sample_text
-        assert "event: plan_step_started" in sample_text
-        assert "event: plan_step_thought" in sample_text
+        assert "event: narration_started" in sample_text
+        assert "event: narration_delta" in sample_text
         assert "event: llm_content_delta" in sample_text
         assert "event: llm_reasoning_delta" in sample_text
         assert "event: llm_usage_final" in sample_text
         assert "event: tool_call_result" in sample_text
-        assert "event: plan_step_completed" in sample_text
+        assert "event: narration_completed" in sample_text
+        assert "STEP 1" not in sample_text
         assert f'"run_id": "{run_id}"' in sample_text
         assert not stale_path.exists()
 
@@ -121,7 +122,7 @@ def test_confirm_run_emits_events_and_writes_txt() -> None:
 def test_sse_stream_returns_event_source_format() -> None:
     async def fake_chat_completion_stream(messages, model=None, reasoning=None):  # noqa: ARG001
         yield {
-            "content_delta": "STEP 1: Inspect legal, payroll, and marketing messages.",
+            "content_delta": "I am reviewing legal, payroll, and marketing emails before ranking.",
             "raw": {"choices": [{"delta": {"content": "Urgent legal"}}]},
         }
         yield {
@@ -169,13 +170,13 @@ def test_sse_stream_returns_event_source_format() -> None:
 
         assert "event: run_started" in body
         assert "event: tool_call_started" in body
-        assert "event: plan_step_started" in body
-        assert "event: plan_step_thought" in body
+        assert "event: narration_started" in body
+        assert "event: narration_delta" in body
         assert "event: llm_content_delta" in body
         assert "event: llm_reasoning_delta" in body
         assert "event: llm_usage_final" in body
         assert "event: tool_call_result" in body
-        assert "event: plan_step_completed" in body
+        assert "event: narration_completed" in body
         assert "event: run_completed" in body
         assert "data: {" in body
 
