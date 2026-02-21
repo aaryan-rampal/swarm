@@ -2,6 +2,41 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, ArrowRight, Eye, Loader2 } from "lucide-react";
+import { X, ArrowRight, Eye, RotateCcw } from "lucide-react";
+import { useApp } from "../store";
+
+const STORAGE_KEY = "swarm-eval-status";
+
+function loadPersistedStatus(): {
+  progresses: Record<string, number>;
+  allDone: boolean;
+} | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { progresses?: Record<string, number>; allDone?: boolean };
+    if (!parsed.progresses || typeof parsed.allDone !== "boolean") return null;
+    return { progresses: parsed.progresses, allDone: parsed.allDone };
+  } catch {
+    return null;
+  }
+}
+
+function savePersistedStatus(progresses: Record<string, number>, allDone: boolean) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ progresses, allDone }));
+  } catch {
+    // ignore quota / privacy errors
+  }
+}
+
+function clearPersistedStatus() {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
 
 interface ModelConfig {
   id: string;
@@ -376,15 +411,26 @@ export default function SwarmPage() {
           <div className="flex items-center gap-4">
             <span>{totalEvals} total evaluations</span>
             {allDone && (
-              <motion.button
-                initial={{ opacity: 0, x: 10 }}
-                animate={{ opacity: 1, x: 0 }}
-                onClick={() => navigate("/results")}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-arena-text text-white text-sm font-medium hover:bg-arena-text/90 transition-colors cursor-pointer"
-              >
-                View Results
-                <ArrowRight className="w-4 h-4" />
-              </motion.button>
+              <>
+                <motion.button
+                  initial={{ opacity: 0, x: 10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  onClick={handleNewRun}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-arena-muted hover:text-arena-text hover:bg-arena-border/30 text-sm font-medium transition-colors cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  New Run
+                </motion.button>
+                <motion.button
+                  initial={{ opacity: 0, x: 10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  onClick={() => navigate("/results")}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-arena-text text-white text-sm font-medium hover:bg-arena-text/90 transition-colors cursor-pointer"
+                >
+                  View Results
+                  <ArrowRight className="w-4 h-4" />
+                </motion.button>
+              </>
             )}
           </div>
         </div>
