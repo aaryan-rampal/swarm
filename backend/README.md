@@ -12,6 +12,7 @@ Add these values to `.env`:
 ```bash
 OPENROUTER_API_KEY=<your_openrouter_api_key>
 OPENROUTER_MODEL=openai/gpt-4o-mini
+OPENROUTER_REASONING_MODEL=google/gemini-3-pro
 WEAVE_PROJECT=omnitrace-dev
 
 # Optional
@@ -80,6 +81,12 @@ Stream run events via SSE:
 ```bash
 curl -N "http://127.0.0.1:8000/api/runs/<run_id>/stream"
 ```
+
+SSE now includes chunk-level model events:
+
+- `llm_content_delta`
+- `llm_reasoning_delta`
+- `llm_usage_final`
 
 Replay run events (cursor optional):
 
