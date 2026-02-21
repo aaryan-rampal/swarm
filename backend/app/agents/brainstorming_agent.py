@@ -18,12 +18,12 @@ FALLBACK_BRAINSTORMING_PROMPT = (
 def _load_brainstorming_prompt() -> str:
     settings = get_settings()
     prompt_path = Path(settings.brainstorming_skill_path)
-
+    if not prompt_path.exists() or not prompt_path.is_file():
+        prompt_path = Path(__file__).parent / "SKILL.md"
     if prompt_path.exists() and prompt_path.is_file():
         content = prompt_path.read_text(encoding="utf-8").strip()
         if content:
             return content
-
     return FALLBACK_BRAINSTORMING_PROMPT
 
 

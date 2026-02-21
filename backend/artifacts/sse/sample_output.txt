@@ -1,0 +1,19 @@
+id: 1
+event: run_started
+data: {"event_id":"evt_0001","cursor":"1","run_id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","session_id":"11111111-2222-3333-4444-555555555555","agent_id":"swarm","event_type":"run_started","phase":"bootstrap","content":"Swarm run started with sample email prioritization scenario.","model":"google/gemini-3-pro","timestamp":"2026-02-21T22:00:00.000000+00:00","weave":{"project":"omnitrace-dev","trace_id":"trace-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","call_id":"call-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee-0","parent_call_id":""},"chunk_index":null,"content_delta":null,"reasoning_details":[],"usage":null}
+
+id: 2
+event: llm_content_delta
+data: {"event_id":"evt_0002","cursor":"2","run_id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","session_id":"11111111-2222-3333-4444-555555555555","agent_id":"multi-model-runner","event_type":"llm_content_delta","phase":"execution","content":"Top priority email is legal retention policy.","model":"google/gemini-3-pro","timestamp":"2026-02-21T22:00:00.100000+00:00","weave":{"project":"omnitrace-dev","trace_id":"trace-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","call_id":"call-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee-content-1","parent_call_id":"call-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee-0"},"chunk_index":1,"content_delta":"Top priority email is legal retention policy.","reasoning_details":[],"usage":null}
+
+id: 3
+event: llm_reasoning_delta
+data: {"event_id":"evt_0003","cursor":"3","run_id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","session_id":"11111111-2222-3333-4444-555555555555","agent_id":"multi-model-runner","event_type":"llm_reasoning_delta","phase":"execution","content":"Prioritized legal and payroll risk above marketing updates.","model":"google/gemini-3-pro","timestamp":"2026-02-21T22:00:00.200000+00:00","weave":{"project":"omnitrace-dev","trace_id":"trace-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","call_id":"call-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee-reasoning-2","parent_call_id":"call-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee-0"},"chunk_index":2,"content_delta":null,"reasoning_details":[{"type":"reasoning.summary","summary":"Prioritized legal and payroll risk above marketing updates."}],"usage":null}
+
+id: 4
+event: llm_usage_final
+data: {"event_id":"evt_0004","cursor":"4","run_id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","session_id":"11111111-2222-3333-4444-555555555555","agent_id":"multi-model-runner","event_type":"llm_usage_final","phase":"usage","content":"Captured token usage from OpenRouter stream.","model":"google/gemini-3-pro","timestamp":"2026-02-21T22:00:00.300000+00:00","weave":{"project":"omnitrace-dev","trace_id":"trace-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","call_id":"call-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee-usage-3","parent_call_id":"call-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee-0"},"chunk_index":3,"content_delta":null,"reasoning_details":[],"usage":{"prompt_tokens":120,"completion_tokens":80,"reasoning_tokens":40}}
+
+id: 5
+event: run_completed
+data: {"event_id":"evt_0005","cursor":"5","run_id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","session_id":"11111111-2222-3333-4444-555555555555","agent_id":"swarm","event_type":"run_completed","phase":"done","content":"Swarm run completed and artifacts captured.","model":"google/gemini-3-pro","timestamp":"2026-02-21T22:00:00.400000+00:00","weave":{"project":"omnitrace-dev","trace_id":"trace-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","call_id":"call-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee-done","parent_call_id":"call-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee-0"},"chunk_index":null,"content_delta":null,"reasoning_details":[],"usage":null}
