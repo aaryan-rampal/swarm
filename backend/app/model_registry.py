@@ -37,14 +37,22 @@ def _derive_provider(model_id: str) -> str:
     return prefix.replace("ai", "AI").replace("meta-llama", "Meta").title()
 
 
-def load_models(path: str | Path = "models.txt") -> list[ModelSpec]:
-    lines = Path(path).read_text(encoding="utf-8").strip().splitlines()
-    models: list[ModelSpec] = []
-    for i, raw in enumerate(lines):
-        model_id = raw.strip()
-        if not model_id or model_id.startswith("#"):
-            continue
-        models.append(
+DEFAULT_MODEL_IDS: list[str] = [
+    "anthropic/claude-sonnet-4.5",
+    "anthropic/claude-opus-4",
+    "openai/gpt-5",
+    "google/gemini-2.5-pro",
+    "google/gemini-2.5-flash",
+    "z-ai/glm-5",
+    "deepseek/deepseek-v3.2",
+    "x-ai/grok-4",
+]
+
+
+def _build_specs(model_ids: list[str]) -> list[ModelSpec]:
+    specs: list[ModelSpec] = []
+    for i, model_id in enumerate(model_ids):
+        specs.append(
             ModelSpec(
                 id=model_id,
                 name=_derive_name(model_id),
@@ -52,4 +60,21 @@ def load_models(path: str | Path = "models.txt") -> list[ModelSpec]:
                 color=_PALETTE[i % len(_PALETTE)],
             )
         )
-    return models
+    return specs
+
+
+def _read_ids_from_file(path: str | Path) -> list[str]:
+    lines = Path(path).read_text(encoding="utf-8").strip().splitlines()
+    return [line.strip() for line in lines if line.strip() and not line.strip().startswith("#")]
+
+
+def load_models(path: str | Path = "models.txt") -> list[ModelSpec]:
+    return _build_specs(_read_ids_from_file(path))
+
+
+def load_available_models(path: str | Path = "available_models.txt") -> list[ModelSpec]:
+    return _build_specs(_read_ids_from_file(path))
+
+
+def models_from_ids(ids: list[str]) -> list[ModelSpec]:
+    return _build_specs(ids)
