@@ -135,6 +135,8 @@ class RunEvent(BaseModel):
     model: str
     timestamp: str
     weave: dict = Field(default_factory=dict)
+    model_id: str | None = None
+    rep_index: int | None = None
     chunk_index: int | None = None
     content_delta: str | None = None
     reasoning_details: list[dict] = Field(default_factory=list)
