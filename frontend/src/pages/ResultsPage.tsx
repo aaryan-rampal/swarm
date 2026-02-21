@@ -72,7 +72,9 @@ interface ModelScoreRow {
 
 function normalizeInverse(value: number, min: number, max: number): number {
   if (max === min) return 3.5;
-  return Math.min(5, (1 - (value - min) / (max - min)) * 3 + 2);
+  const mean = (min + max) / 2;
+  const ratio = (mean - value) / mean;
+  return Math.min(5, Math.max(1, 3.5 + ratio * 5));
 }
 
 function computeComposite(row: Omit<ModelScoreRow, "composite">, speedScore: number, tokenScore: number): number {
@@ -301,8 +303,8 @@ export default function ResultsPage() {
       { metric: "Quality", ...Object.fromEntries(rows.map((r) => [r.name, parseFloat(r.quality.toFixed(1))])) },
       { metric: "Reasoning", ...Object.fromEntries(rows.map((r) => [r.name, parseFloat(r.reasoning.toFixed(1))])) },
       { metric: "Usability", ...Object.fromEntries(rows.map((r) => [r.name, parseFloat(r.usability.toFixed(1))])) },
-      { metric: "Speed", ...Object.fromEntries(rows.map((r) => [r.name, parseFloat(Math.min(5, 5 * (1 - (r.latency - minLatency) / (maxLatency - minLatency || 1)) * 0.6 + 2).toFixed(1))])) },
-      { metric: "Token Efficiency", ...Object.fromEntries(rows.map((r) => [r.name, parseFloat(Math.min(5, 5 * (1 - (r.tokens - minTokens) / (maxTokens - minTokens || 1)) * 0.6 + 2).toFixed(1))])) },
+      { metric: "Speed", ...Object.fromEntries(rows.map((r) => [r.name, parseFloat(normalizeInverse(r.latency, minLatency, maxLatency).toFixed(1))])) },
+      { metric: "Token Efficiency", ...Object.fromEntries(rows.map((r) => [r.name, parseFloat(normalizeInverse(r.tokens, minTokens, maxTokens).toFixed(1))])) },
     ];
   }, [rows]);
 
@@ -317,8 +319,8 @@ export default function ResultsPage() {
       Quality: parseFloat(r.quality.toFixed(2)),
       Reasoning: parseFloat(r.reasoning.toFixed(2)),
       Usability: parseFloat(r.usability.toFixed(2)),
-      Speed: parseFloat(Math.min(5, 5 * (1 - (r.latency - minLatency) / (maxLatency - minLatency || 1)) * 0.6 + 2).toFixed(2)),
-      "Token Eff.": parseFloat(Math.min(5, 5 * (1 - (r.tokens - minTokens) / (maxTokens - minTokens || 1)) * 0.6 + 2).toFixed(2)),
+      Speed: parseFloat(normalizeInverse(r.latency, minLatency, maxLatency).toFixed(2)),
+      "Token Eff.": parseFloat(normalizeInverse(r.tokens, minTokens, maxTokens).toFixed(2)),
     }));
   }, [rows]);
 
@@ -331,8 +333,8 @@ export default function ResultsPage() {
     const minLat = Math.min(...rows.map((r) => r.latency));
     const maxTok = Math.max(...rows.map((r) => r.tokens));
     const minTok = Math.min(...rows.map((r) => r.tokens));
-    const speed = (r: typeof rows[0]) => Math.min(5, 5 * (1 - (r.latency - minLat) / (maxLat - minLat || 1)) * 0.6 + 2);
-    const tokenEff = (r: typeof rows[0]) => Math.min(5, 5 * (1 - (r.tokens - minTok) / (maxTok - minTok || 1)) * 0.6 + 2);
+    const speed = (r: typeof rows[0]) => normalizeInverse(r.latency, minLat, maxLat);
+    const tokenEff = (r: typeof rows[0]) => normalizeInverse(r.tokens, minTok, maxTok);
     const rankingRows = rows.map((r, i) =>
       `| ${i + 1} | ${r.name} | ${r.composite.toFixed(2)} | ${r.correctness.toFixed(1)} | ${r.quality.toFixed(1)} | ${r.reasoning.toFixed(1)} | ${r.usability.toFixed(1)} | ${speed(r).toFixed(1)} | ${tokenEff(r).toFixed(1)} |`
     ).join("\n");
