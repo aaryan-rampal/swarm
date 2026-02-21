@@ -64,6 +64,7 @@ class SwarmRuntime:
         content: str,
         model: str,
         weave: dict[str, str],
+        **extra: Any,
     ) -> dict[str, Any]:
         run = self.runs[run_id]
         run["cursor"] += 1
@@ -80,6 +81,7 @@ class SwarmRuntime:
             "timestamp": now_iso(),
             "weave": weave,
         }
+        event.update(extra)
         run["events"].append(event)
         return event
 

@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 import weave
 
 from app.config import get_settings
+from app.openrouter_client import chat_completion_stream
 from app.swarm_runtime import runtime
 
 
@@ -22,14 +24,50 @@ def _load_scenario() -> dict:
     }
 
 
+def _build_reasoning_messages(scenario: dict[str, Any]) -> list[dict[str, str]]:
+    return [
+        {
+            "role": "system",
+            "content": (
+                "You are a rigorous inbox triage assistant. Think through priority"
+                " ranking carefully and produce concise action-oriented conclusions."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                f"{scenario['prompt']}\n\n"
+                "Inbox dataset JSON:\n"
+                f"{json.dumps(scenario['emails'])}\n\n"
+                "Evaluation rubric:\n"
+                f"{scenario['evaluation']}"
+            ),
+        },
+    ]
+
+
+def _reasoning_text(reasoning_details: list[dict[str, Any]]) -> str:
+    first = reasoning_details[0]
+    if first.get("type") == "reasoning.summary":
+        return first.get("summary", "Reasoning summary chunk.")
+    if first.get("type") == "reasoning.text":
+        return first.get("text", "Reasoning text chunk.")
+    return json.dumps(first)
+
+
+@weave.op
+def _trace_stream_chunk(chunk: dict[str, Any]) -> dict[str, Any]:
+    return chunk
+
+
 @weave.op
 async def run_sample_swarm(run_id: UUID) -> None:
     scenario = _load_scenario()
-    model = get_settings().openrouter_model
-    weave_project = get_settings().weave_project
-    important_count = sum(
-        1 for email in scenario["emails"]["emails"] if email["priority"] == "important"
-    )
+    settings = get_settings()
+    model = settings.openrouter_reasoning_model
+    weave_project = settings.weave_project
+    trace_id = f"trace-{run_id}"
+    root_call_id = f"call-{run_id}-0"
 
     runtime.add_run_event(
         run_id,
@@ -40,58 +78,95 @@ async def run_sample_swarm(run_id: UUID) -> None:
         model=model,
         weave={
             "project": weave_project,
-            "trace_id": f"trace-{run_id}",
-            "call_id": f"call-{run_id}-0",
+            "trace_id": trace_id,
+            "call_id": root_call_id,
             "parent_call_id": "",
         },
     )
 
-    steps = [
-        (
-            "brainstorming-agent",
-            "reasoning_delta",
-            "brainstorming",
-            "Clarifying goal: prioritize urgent legal/compliance and payroll risks first.",
-        ),
-        (
-            "multi-model-runner",
-            "reasoning_delta",
-            "execution",
-            f"Running the prompt against synthetic inbox with {important_count} important emails.",
-        ),
-        (
-            "judge-engine",
-            "reasoning_delta",
-            "evaluation",
-            "Scoring summaries against factual grounding, priority ranking, and actionability.",
-        ),
-        (
-            "aggregator",
-            "reasoning_delta",
-            "aggregation",
-            "Combining quality, correctness, cost, and latency into composite scores.",
-        ),
-        (
-            "report-generator",
-            "reasoning_delta",
-            "reporting",
-            "Generating final markdown report and surfacing best model recommendation.",
-        ),
-    ]
+    chunk_index = 0
+    stream_messages = _build_reasoning_messages(scenario)
+    try:
+        async for chunk in chat_completion_stream(
+            messages=stream_messages,
+            model=model,
+            reasoning={"enabled": True, "exclude": False, "max_tokens": 4096},
+        ):
+            if chunk.get("done"):
+                continue
 
-    for idx, (agent_id, event_type, phase, content) in enumerate(steps, start=1):
+            chunk_index += 1
+            traced_chunk = _trace_stream_chunk(chunk)
+
+            content_delta = traced_chunk.get("content_delta")
+            if content_delta:
+                runtime.add_run_event(
+                    run_id,
+                    agent_id="multi-model-runner",
+                    event_type="llm_content_delta",
+                    phase="execution",
+                    content=content_delta,
+                    model=model,
+                    weave={
+                        "project": weave_project,
+                        "trace_id": trace_id,
+                        "call_id": f"call-{run_id}-content-{chunk_index}",
+                        "parent_call_id": root_call_id,
+                    },
+                    chunk_index=chunk_index,
+                    content_delta=content_delta,
+                )
+
+            reasoning_details = traced_chunk.get("reasoning_details") or []
+            if reasoning_details:
+                runtime.add_run_event(
+                    run_id,
+                    agent_id="multi-model-runner",
+                    event_type="llm_reasoning_delta",
+                    phase="execution",
+                    content=_reasoning_text(reasoning_details),
+                    model=model,
+                    weave={
+                        "project": weave_project,
+                        "trace_id": trace_id,
+                        "call_id": f"call-{run_id}-reasoning-{chunk_index}",
+                        "parent_call_id": root_call_id,
+                    },
+                    chunk_index=chunk_index,
+                    reasoning_details=reasoning_details,
+                )
+
+            usage = traced_chunk.get("usage")
+            if usage:
+                runtime.add_run_event(
+                    run_id,
+                    agent_id="multi-model-runner",
+                    event_type="llm_usage_final",
+                    phase="usage",
+                    content="Captured token usage from OpenRouter stream.",
+                    model=model,
+                    weave={
+                        "project": weave_project,
+                        "trace_id": trace_id,
+                        "call_id": f"call-{run_id}-usage-{chunk_index}",
+                        "parent_call_id": root_call_id,
+                    },
+                    chunk_index=chunk_index,
+                    usage=usage,
+                )
+    except Exception as exc:
         runtime.add_run_event(
             run_id,
-            agent_id=agent_id,
-            event_type=event_type,
-            phase=phase,
-            content=content,
+            agent_id="multi-model-runner",
+            event_type="error",
+            phase="execution",
+            content=f"OpenRouter streaming failed: {exc}",
             model=model,
             weave={
                 "project": weave_project,
-                "trace_id": f"trace-{run_id}",
-                "call_id": f"call-{run_id}-{idx}",
-                "parent_call_id": f"call-{run_id}-0",
+                "trace_id": trace_id,
+                "call_id": f"call-{run_id}-error",
+                "parent_call_id": root_call_id,
             },
         )
 
@@ -104,9 +179,9 @@ async def run_sample_swarm(run_id: UUID) -> None:
         model=model,
         weave={
             "project": weave_project,
-            "trace_id": f"trace-{run_id}",
+            "trace_id": trace_id,
             "call_id": f"call-{run_id}-done",
-            "parent_call_id": f"call-{run_id}-0",
+            "parent_call_id": root_call_id,
         },
     )
 
