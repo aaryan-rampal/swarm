@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
   RadarChart,
@@ -27,155 +27,79 @@ import {
   DollarSign,
   Target,
 } from "lucide-react";
+import { useApp, type JudgeSweepResult } from "../store";
 
-const MODELS = [
-  { name: "GPT-Codex", color: "#10b981", provider: "OpenAI" },
-  { name: "Claude Opus", color: "#f97316", provider: "Anthropic" },
-  { name: "Gemini 3 Pro", color: "#3b82f6", provider: "Google" },
-  { name: "Kimi 2.5", color: "#a855f7", provider: "Moonshot" },
-];
+const MODEL_META: Record<string, { name: string; color: string; provider: string }> = {
+  "gpt-codex": { name: "GPT-Codex", color: "#10b981", provider: "OpenAI" },
+  "claude-opus": { name: "Claude Opus", color: "#f97316", provider: "Anthropic" },
+  "gemini-3-pro": { name: "Gemini 3 Pro", color: "#3b82f6", provider: "Google" },
+  "kimi-25": { name: "Kimi 2.5", color: "#a855f7", provider: "Moonshot" },
+};
 
-const SCORES = {
-  "GPT-Codex": { correctness: 4.1, quality: 3.8, reasoning: 4.0, latency: 2156, cost: 0.032, tokens: 52000, composite: 4.02 },
-  "Claude Opus": { correctness: 4.5, quality: 4.3, reasoning: 4.6, latency: 1823, cost: 0.045, tokens: 48000, composite: 4.42 },
-  "Gemini 3 Pro": { correctness: 4.0, quality: 3.9, reasoning: 3.7, latency: 1245, cost: 0.018, tokens: 43000, composite: 3.88 },
-  "Kimi 2.5": { correctness: 3.6, quality: 3.5, reasoning: 3.4, latency: 892, cost: 0.008, tokens: 38000, composite: 3.48 },
+const FALLBACK_SCORES = {
+  "GPT-Codex": { correctness: 4.1, quality: 3.8, reasoning: 4.0, usability: 3.9, latency: 2156, cost: 0.032, tokens: 52000, composite: 4.02 },
+  "Claude Opus": { correctness: 4.5, quality: 4.3, reasoning: 4.6, usability: 4.4, latency: 1823, cost: 0.045, tokens: 48000, composite: 4.42 },
+  "Gemini 3 Pro": { correctness: 4.0, quality: 3.9, reasoning: 3.7, usability: 3.8, latency: 1245, cost: 0.018, tokens: 43000, composite: 3.88 },
+  "Kimi 2.5": { correctness: 3.6, quality: 3.5, reasoning: 3.4, usability: 3.3, latency: 892, cost: 0.008, tokens: 38000, composite: 3.48 },
 } as const;
 
-type ModelName = keyof typeof SCORES;
+interface ModelScoreRow {
+  id: string;
+  name: string;
+  color: string;
+  provider: string;
+  correctness: number;
+  quality: number;
+  reasoning: number;
+  usability: number;
+  composite: number;
+  latency: number;
+  cost: number;
+  tokens: number;
+}
 
-const radarData = [
-  { metric: "Correctness", ...Object.fromEntries(MODELS.map((m) => [m.name, SCORES[m.name as ModelName].correctness])) },
-  { metric: "Quality", ...Object.fromEntries(MODELS.map((m) => [m.name, SCORES[m.name as ModelName].quality])) },
-  { metric: "Reasoning", ...Object.fromEntries(MODELS.map((m) => [m.name, SCORES[m.name as ModelName].reasoning])) },
-  {
-    metric: "Speed",
-    ...Object.fromEntries(
-      MODELS.map((m) => [m.name, parseFloat((5 - (SCORES[m.name as ModelName].latency / 2200) * 5).toFixed(1))])
-    ),
-  },
-  {
-    metric: "Cost Efficiency",
-    ...Object.fromEntries(
-      MODELS.map((m) => [m.name, parseFloat((5 - (SCORES[m.name as ModelName].cost / 0.05) * 5).toFixed(1))])
-    ),
-  },
-];
+function buildScoreRows(judgeResult: JudgeSweepResult | null): ModelScoreRow[] {
+  if (judgeResult && Object.keys(judgeResult.models).length > 0) {
+    return Object.entries(judgeResult.models).map(([modelId, data]) => {
+      const meta = MODEL_META[modelId] ?? { name: modelId, color: "#94a3b8", provider: "Unknown" };
+      const s = data.scores;
+      const composite = s.overall * 5;
+      return {
+        id: modelId,
+        name: meta.name,
+        color: meta.color,
+        provider: meta.provider,
+        correctness: s.correctness * 5,
+        quality: s.quality * 5,
+        reasoning: s.reasoning * 5,
+        usability: s.usability * 5,
+        composite: parseFloat(composite.toFixed(2)),
+        latency: data.latency_ms,
+        cost: 0,
+        tokens: data.tokens_in + data.tokens_out,
+      };
+    }).sort((a, b) => b.composite - a.composite);
+  }
 
-const barData = MODELS.map((m) => ({
-  name: m.name,
-  Correctness: SCORES[m.name as ModelName].correctness,
-  Quality: SCORES[m.name as ModelName].quality,
-  Reasoning: SCORES[m.name as ModelName].reasoning,
-}));
+  return Object.entries(FALLBACK_SCORES).map(([name, s]) => {
+    const meta = Object.values(MODEL_META).find((m) => m.name === name) ?? { name, color: "#94a3b8", provider: "Unknown" };
+    return {
+      id: name,
+      name: meta.name,
+      color: meta.color,
+      provider: meta.provider,
+      correctness: s.correctness,
+      quality: s.quality,
+      reasoning: s.reasoning,
+      usability: s.usability,
+      composite: s.composite,
+      latency: s.latency,
+      cost: s.cost,
+      tokens: s.tokens,
+    };
+  }).sort((a, b) => b.composite - a.composite);
+}
 
-const REPORT = `# Swarm Evaluation Report
-
-## Task Summary
-
-**Objective**: Build an agent that reads emails and summarizes the important ones
-**Models Tested**: 4 | **Total Evaluations**: 400 | **Synthetic Test Cases**: 20
-
----
-
-## Best Model: Claude Opus
-
-| Metric | Score |
-|--------|-------|
-| Composite Score | **4.42 / 5.00** |
-| Correctness | 4.50 |
-| Quality | 4.30 |
-| Reasoning | 4.60 |
-| Avg Latency | 1,823 ms |
-| Cost per Call | $0.045 |
-
----
-
-## Model Rankings
-
-| Rank | Model | Composite | Correctness | Quality | Latency | Cost |
-|------|-------|-----------|-------------|---------|---------|------|
-| 1 | Claude Opus | 4.42 | 4.50 | 4.30 | 1,823ms | $0.045 |
-| 2 | GPT-Codex | 4.02 | 4.10 | 3.80 | 2,156ms | $0.032 |
-| 3 | Gemini 3 Pro | 3.88 | 4.00 | 3.90 | 1,245ms | $0.018 |
-| 4 | Kimi 2.5 | 3.48 | 3.60 | 3.50 | 892ms | $0.008 |
-
----
-
-## Best Value Picks
-
-- **Most Accurate**: Claude Opus (4.50 correctness)
-- **Fastest**: Kimi 2.5 (892ms avg latency)
-- **Most Affordable**: Kimi 2.5 ($0.008/call)
-- **Best Balance**: GPT-Codex (strong scores, moderate cost)
-
----
-
-## Optimized Prompt Template
-
-\`\`\`text
-You are an expert email triage assistant. Given a set of emails, identify the
-top 3 most important ones and provide a concise bullet-point summary for each.
-
-Importance Criteria:
-- Sender authority (manager, executive, key stakeholder)
-- Time sensitivity (deadlines, urgent requests)
-- Action required (tasks, decisions, approvals)
-- Business impact (revenue, customers, critical systems)
-
-For each important email, provide:
-- Subject line
-- Sender
-- Why it's important (1 sentence)
-- Key action items (bullet points)
-- Suggested priority level (Critical / High / Medium)
-
-Input emails:
-{{emails}}
-\`\`\`
-
----
-
-## Evaluation Criteria
-
-### Correctness (50% weight)
-- Did the agent identify the correct top 3 most important emails?
-- Were importance rankings justified?
-
-### Quality (30% weight)
-- Are summaries concise and actionable?
-- Is the formatting consistent and readable?
-
-### Reasoning (10% weight)
-- Is the reasoning trace logical?
-- Does the agent explain why emails were prioritized?
-
-### Cost Penalty (10% weight)
-- Higher cost models receive a small penalty
-- Formula: \`composite = 0.5 * correctness + 0.3 * quality + 0.1 * reasoning - 0.1 * cost_penalty\`
-
----
-
-## Weave Integration
-
-All evaluation traces are available in the Weave dashboard:
-- [View Traces](https://wandb.ai/swarm/eval-traces)
-- [Compare Models](https://wandb.ai/swarm/model-comparison)
-
----
-
-## Cursor Instructions
-
-1. Copy the optimized prompt template above
-2. Set your model to **Claude Opus** (\`anthropic/claude-opus\`)
-3. Paste into Cursor's AI chat or your agent code
-4. Configure with your email API credentials
-5. Run and iterate!
-
----
-
-*Generated by Swarm • 400 evaluations across 4 models • Feb 21, 2026*
-`;
 
 function CustomTooltip({
   active,
@@ -200,15 +124,87 @@ function CustomTooltip({
 }
 
 export default function ResultsPage() {
+  const { judgeResult } = useApp();
   const [copied, setCopied] = useState(false);
 
+  const rows = useMemo(() => buildScoreRows(judgeResult), [judgeResult]);
+  const isLive = !!judgeResult && Object.keys(judgeResult.models).length > 0;
+
+  const radarData = useMemo(() => [
+    { metric: "Correctness", ...Object.fromEntries(rows.map((r) => [r.name, parseFloat(r.correctness.toFixed(1))])) },
+    { metric: "Quality", ...Object.fromEntries(rows.map((r) => [r.name, parseFloat(r.quality.toFixed(1))])) },
+    { metric: "Reasoning", ...Object.fromEntries(rows.map((r) => [r.name, parseFloat(r.reasoning.toFixed(1))])) },
+    { metric: "Usability", ...Object.fromEntries(rows.map((r) => [r.name, parseFloat(r.usability.toFixed(1))])) },
+  ], [rows]);
+
+  const barData = useMemo(() => rows.map((r) => ({
+    name: r.name,
+    Correctness: parseFloat(r.correctness.toFixed(2)),
+    Quality: parseFloat(r.quality.toFixed(2)),
+    Reasoning: parseFloat(r.reasoning.toFixed(2)),
+  })), [rows]);
+
+  const bestRow = rows[0];
+  const fastestRow = [...rows].sort((a, b) => a.latency - b.latency)[0];
+  const bestModel = { name: bestRow.name, color: bestRow.color, provider: bestRow.provider };
+
+  const dynamicReport = useMemo(() => {
+    const rankingRows = rows.map((r, i) =>
+      `| ${i + 1} | ${r.name} | ${r.composite.toFixed(2)} | ${r.correctness.toFixed(1)} | ${r.quality.toFixed(1)} | ${r.latency.toLocaleString()}ms | — |`
+    ).join("\n");
+    return `# Swarm Evaluation Report
+
+## Task Summary
+
+**Objective**: Build an agent that reads emails and summarizes the important ones
+**Models Tested**: ${rows.length} | **Judged by**: ${isLive ? "Gemini 2.5 Flash (LLM-as-a-Judge)" : "Hardcoded fallback scores"}
+**Eval Questions**: 35 yes/no questions across 4 categories
+
+---
+
+## Best Model: ${bestRow.name}
+
+| Metric | Score |
+|--------|-------|
+| Composite Score | **${bestRow.composite.toFixed(2)} / 5.00** |
+| Correctness | ${bestRow.correctness.toFixed(2)} |
+| Quality | ${bestRow.quality.toFixed(2)} |
+| Reasoning | ${bestRow.reasoning.toFixed(2)} |
+| Usability | ${bestRow.usability.toFixed(2)} |
+| Judge Latency | ${bestRow.latency.toLocaleString()} ms |
+
+---
+
+## Model Rankings
+
+| Rank | Model | Composite | Correctness | Quality | Latency | Cost |
+|------|-------|-----------|-------------|---------|---------|------|
+${rankingRows}
+
+---
+
+## Evaluation Method
+
+Each model response was evaluated by **Gemini 2.5 Flash** using 35 yes/no questions:
+
+- **Correctness** (10 questions): Did it pick the right emails and rank them correctly?
+- **Quality** (10 questions): Is the output well-structured, concise, scannable?
+- **Reasoning** (10 questions): Is the prioritization logic sound?
+- **Usability** (5 questions): Is the output actionable and professional?
+
+Score = percentage of "yes" answers per category, scaled to 5.0.
+
+---
+
+*Generated by Swarm • ${rows.length} models evaluated • ${new Date().toLocaleDateString()}*
+`;
+  }, [rows, bestRow, isLive]);
+
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(REPORT);
+    await navigator.clipboard.writeText(dynamicReport);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
-
-  const bestModel = MODELS[1]; // Claude Opus
 
   return (
     <div className="h-full flex flex-col overflow-y-auto">
@@ -238,17 +234,22 @@ export default function ResultsPage() {
                     className="text-4xl font-bold font-mono"
                     style={{ color: bestModel.color }}
                   >
-                    4.42
+                    {bestRow.composite.toFixed(2)}
                   </div>
                   <div className="text-arena-muted text-sm">/ 5.00 composite</div>
                 </div>
               </div>
+              {isLive && (
+                <div className="mt-3 text-xs text-arena-accent font-medium">
+                  Scored by Gemini 2.5 Flash (LLM-as-a-Judge)
+                </div>
+              )}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-8">
                 {[
-                  { label: "Most Accurate", value: "Claude Opus", detail: "4.50", icon: Target, color: "#f97316" },
-                  { label: "Fastest", value: "Kimi 2.5", detail: "892ms", icon: Bolt, color: "#a855f7" },
-                  { label: "Most Affordable", value: "Kimi 2.5", detail: "$0.008", icon: DollarSign, color: "#a855f7" },
-                  { label: "Best Balance", value: "GPT-Codex", detail: "4.02", icon: Target, color: "#10b981" },
+                  { label: "Most Accurate", value: bestRow.name, detail: bestRow.correctness.toFixed(2), icon: Target, color: bestRow.color },
+                  { label: "Fastest", value: fastestRow.name, detail: `${fastestRow.latency}ms`, icon: Bolt, color: fastestRow.color },
+                  { label: "Best Reasoning", value: [...rows].sort((a, b) => b.reasoning - a.reasoning)[0].name, detail: [...rows].sort((a, b) => b.reasoning - a.reasoning)[0].reasoning.toFixed(2), icon: DollarSign, color: [...rows].sort((a, b) => b.reasoning - a.reasoning)[0].color },
+                  { label: "Best Usability", value: [...rows].sort((a, b) => b.usability - a.usability)[0].name, detail: [...rows].sort((a, b) => b.usability - a.usability)[0].usability.toFixed(2), icon: Target, color: [...rows].sort((a, b) => b.usability - a.usability)[0].color },
                 ].map((item, i) => (
                   <div
                     key={i}
@@ -295,13 +296,13 @@ export default function ResultsPage() {
                     tick={{ fill: "#64748b", fontSize: 10 }}
                     tickCount={6}
                   />
-                  {MODELS.map((m) => (
+                  {rows.map((r) => (
                     <Radar
-                      key={m.name}
-                      name={m.name}
-                      dataKey={m.name}
-                      stroke={m.color}
-                      fill={m.color}
+                      key={r.name}
+                      name={r.name}
+                      dataKey={r.name}
+                      stroke={r.color}
+                      fill={r.color}
                       fillOpacity={0.1}
                       strokeWidth={2}
                     />
@@ -390,12 +391,11 @@ export default function ResultsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {MODELS.map((m, i) => {
-                    const s = SCORES[m.name as ModelName];
-                    const isWinner = m.name === "Claude Opus";
+                  {rows.map((r, i) => {
+                    const isWinner = i === 0;
                     return (
                       <tr
-                        key={m.name}
+                        key={r.id}
                         className={`border-b border-arena-border/50 ${isWinner ? "bg-orange-500/5" : ""}`}
                       >
                         <td className="px-6 py-3.5">
@@ -406,38 +406,38 @@ export default function ResultsPage() {
                             <div
                               className="w-2 h-2 rounded-full"
                               style={{
-                                background: m.color,
-                                boxShadow: `0 0 6px ${m.color}`,
+                                background: r.color,
+                                boxShadow: `0 0 6px ${r.color}`,
                               }}
                             />
                             <span className="font-medium text-arena-text">
-                              {m.name}
+                              {r.name}
                             </span>
                             {isWinner && (
                               <Trophy className="w-3.5 h-3.5 text-yellow-500" />
                             )}
                           </div>
                         </td>
-                        <td className="px-4 py-3.5 font-mono font-semibold" style={{ color: m.color }}>
-                          {s.composite.toFixed(2)}
+                        <td className="px-4 py-3.5 font-mono font-semibold" style={{ color: r.color }}>
+                          {r.composite.toFixed(2)}
                         </td>
                         <td className="px-4 py-3.5 font-mono text-arena-text/80">
-                          {s.correctness.toFixed(1)}
+                          {r.correctness.toFixed(1)}
                         </td>
                         <td className="px-4 py-3.5 font-mono text-arena-text/80">
-                          {s.quality.toFixed(1)}
+                          {r.quality.toFixed(1)}
                         </td>
                         <td className="px-4 py-3.5 font-mono text-arena-text/80">
-                          {s.reasoning.toFixed(1)}
+                          {r.reasoning.toFixed(1)}
                         </td>
                         <td className="px-4 py-3.5 font-mono text-arena-text/80">
-                          {s.latency.toLocaleString()}ms
+                          {r.latency.toLocaleString()}ms
                         </td>
                         <td className="px-4 py-3.5 font-mono text-arena-text/80">
-                          ${s.cost.toFixed(3)}
+                          —
                         </td>
                         <td className="px-4 py-3.5 font-mono text-arena-text/80">
-                          {s.tokens.toLocaleString()}
+                          {r.tokens.toLocaleString()}
                         </td>
                       </tr>
                     );
@@ -519,7 +519,7 @@ export default function ResultsPage() {
                   },
                 }}
               >
-                {REPORT}
+                {dynamicReport}
               </ReactMarkdown>
             </div>
           </motion.div>
