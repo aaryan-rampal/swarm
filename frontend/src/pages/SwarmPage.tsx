@@ -1,42 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, ArrowRight, Eye, Loader2 } from "lucide-react";
-import { X, ArrowRight, Eye, RotateCcw } from "lucide-react";
-import { useApp } from "../store";
-
-const STORAGE_KEY = "swarm-eval-status";
-
-function loadPersistedStatus(): {
-  progresses: Record<string, number>;
-  allDone: boolean;
-} | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { progresses?: Record<string, number>; allDone?: boolean };
-    if (!parsed.progresses || typeof parsed.allDone !== "boolean") return null;
-    return { progresses: parsed.progresses, allDone: parsed.allDone };
-  } catch {
-    return null;
-  }
-}
-
-function savePersistedStatus(progresses: Record<string, number>, allDone: boolean) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ progresses, allDone }));
-  } catch {
-    // ignore quota / privacy errors
-  }
-}
-
-function clearPersistedStatus() {
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // ignore
-  }
-}
+import { X, ArrowRight, Eye, RotateCcw, Loader2 } from "lucide-react";
 
 interface ModelConfig {
   id: string;
@@ -218,6 +183,7 @@ export default function SwarmPage() {
   const [allDone, setAllDone] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [runKey, setRunKey] = useState(0);
   const eventSourceRef = useRef<EventSource | null>(null);
 
   const models = useMemo(
@@ -341,7 +307,7 @@ export default function SwarmPage() {
       cancelled = true;
       eventSourceRef.current?.close();
     };
-  }, []);
+  }, [runKey]);
 
   const getProgress = useCallback(
     (ms: ModelState): number => {
@@ -373,6 +339,16 @@ export default function SwarmPage() {
 
   const handleModelClick = useCallback((modelId: string) => {
     setSelectedModelId(modelId);
+  }, []);
+
+  const handleNewRun = useCallback(() => {
+    eventSourceRef.current?.close();
+    setModelStates({});
+    setAllDone(false);
+    setLoading(true);
+    setError(null);
+    setSelectedModelId(null);
+    setRunKey((k) => k + 1);
   }, []);
 
   if (loading) {
