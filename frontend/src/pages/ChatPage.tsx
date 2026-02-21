@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, Check } from "lucide-react";
+import { Send, Zap, Check } from "lucide-react";
 import { useApp } from "../store";
+import { api } from "../lib/api";
 import ReactMarkdown from "react-markdown";
 
 interface Message {
@@ -12,48 +13,37 @@ interface Message {
 }
 
 const WELCOME_MSG =
-  "Describe the agent or task you want to build, and I'll test it across multiple models to find the best one for you.";
+  "Hey! I'm **Swarm** — your AI prompt benchmarking assistant.\n\nDescribe the agent or task you want to build, and I'll test it across multiple models to find the best one for you.\n\nWhat would you like to build?";
 
-const CLARIFYING_MSG = `Great choice. A few quick questions to sharpen the evaluation:
+interface PlannerMessageResponse {
+  assistant_message: string;
+  ready_to_confirm: boolean;
+  draft_prompt: string;
+}
 
-1. **Scale** — How many items per run? (small / medium / large)
-2. **Priority** — Accuracy, speed, or cost?
-3. **Output** — Bullet points, paragraphs, or JSON?`;
-
-const PROMPT_MSG = `Here's the prompt each model will receive:
-
-\`\`\`
-You are an expert email triage assistant. Given a set of emails, identify the top 3 most important ones and provide a concise summary for each.
-
-Criteria:
-- Sender authority (manager, executive, stakeholder)
-- Time sensitivity (deadlines, urgent requests)
-- Action required (tasks, decisions, approvals)
-- Business impact (revenue, customers, systems)
-
-For each email, provide:
-- Subject line & sender
-- Why it's important (1 sentence)
-- Action items (bullet points)
-- Priority level (Critical / High / Medium)
-
-Input emails:
-{{emails}}
-\`\`\``;
-
-type Phase = "welcome" | "clarifying" | "planning" | "ready";
+interface PlannerConfirmResponse {
+  run_id: string;
+  status: string;
+  sse_sample_path: string;
+}
 
 export default function ChatPage() {
   const navigate = useNavigate();
-  const { setUserPrompt } = useApp();
+  const {
+    setUserPrompt,
+    sessionId,
+    setSessionId,
+    setRunId,
+  } = useApp();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [phase, setPhase] = useState<Phase>("welcome");
-  const [isTyping, setIsTyping] = useState(false);
+  const [readyToConfirm, setReadyToConfirm] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [displayedContent, setDisplayedContent] = useState("");
   const [typingIdx, setTypingIdx] = useState(-1);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -64,8 +54,7 @@ export default function ChatPage() {
   }, [messages, displayedContent, scrollToBottom]);
 
   const typeMessage = useCallback(
-    (content: string, isPlan: boolean, nextPhase: Phase) => {
-      setIsTyping(true);
+    (content: string, isPlan: boolean) => {
       setDisplayedContent("");
       const targetIdx = messages.length;
       setTypingIdx(targetIdx);
@@ -78,12 +67,7 @@ export default function ChatPage() {
           clearInterval(interval);
           setDisplayedContent("");
           setTypingIdx(-1);
-          setMessages((prev) => [
-            ...prev,
-            { role: "assistant", content, isPlan },
-          ]);
-          setIsTyping(false);
-          setPhase(nextPhase);
+          setMessages((prev) => [...prev, { role: "assistant", content, isPlan }]);
         } else {
           setDisplayedContent(content.slice(0, i));
         }
@@ -93,23 +77,51 @@ export default function ChatPage() {
   );
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      typeMessage(WELCOME_MSG, false, "welcome");
-    }, 1200);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    let cancelled = false;
+    async function init() {
+      try {
+        const res = await api.post<{ session_id: string; status: string }>(
+          "/api/planner/sessions",
+          {}
+        );
+        if (!cancelled && res.session_id) {
+          setSessionId(res.session_id);
+          setMessages([{ role: "assistant", content: WELCOME_MSG }]);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to start session");
+        }
+      }
+    }
+    init();
+    return () => {
+      cancelled = true;
+    };
+  }, [setSessionId]);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     const text = input.trim();
-    if (!text || isTyping) return;
+    if (!text || isLoading || !sessionId) return;
+
+    setUserPrompt(text);
     setMessages((prev) => [...prev, { role: "user", content: text }]);
     setInput("");
-    if (phase === "welcome") {
-      setUserPrompt(text);
-      setTimeout(() => typeMessage(CLARIFYING_MSG, false, "clarifying"), 600);
-    } else if (phase === "clarifying") {
-      setTimeout(() => typeMessage(PROMPT_MSG, true, "ready"), 600);
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      const res = await api.post<PlannerMessageResponse>(
+        `/api/planner/sessions/${sessionId}/messages`,
+        { message: text }
+      );
+      setReadyToConfirm(res.ready_to_confirm);
+      const isPlan = res.ready_to_confirm && res.draft_prompt.length > 0;
+      typeMessage(res.assistant_message, isPlan);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to send message");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -120,120 +132,154 @@ export default function ChatPage() {
     }
   };
 
-  const hasContent =
-    messages.length > 0 || typingIdx >= 0 || displayedContent;
+  const handleApprove = async () => {
+    if (!sessionId || isConfirming || !readyToConfirm) return;
 
-  const proseClasses =
-    "prose prose-sm max-w-none break-words [&_pre]:whitespace-pre-wrap [&_pre]:break-words [&_pre]:overflow-x-auto [&_pre]:bg-arena-surface [&_pre]:rounded-lg [&_pre]:p-4 [&_pre]:text-arena-text/80 [&_pre]:text-[13px] [&_code]:break-words [&_code]:text-[13px] [&_h2]:text-base [&_h2]:font-semibold [&_h2]:text-arena-text [&_h3]:text-sm [&_h3]:text-arena-text/90 [&_strong]:text-arena-text [&_strong]:font-medium [&_p]:text-arena-text/80 [&_p]:leading-relaxed [&_li]:text-arena-text/80 [&_li]:leading-relaxed";
+    setIsConfirming(true);
+    setError(null);
+
+    try {
+      const res = await api.post<PlannerConfirmResponse>(
+        `/api/planner/sessions/${sessionId}/confirm`,
+        {}
+      );
+      setRunId(res.run_id);
+      navigate("/swarm", { state: { runId: res.run_id } });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to start swarm");
+      setIsConfirming(false);
+    }
+  };
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto overflow-x-hidden">
-        {!hasContent ? (
-          <div className="h-full flex flex-col items-center justify-center px-6 pb-32">
-            <h2
-              className="text-4xl text-arena-text/80 text-center leading-snug"
-              style={{ fontFamily: "var(--font-serif)", fontWeight: 400 }}
-            >
-              What would you like to build?
-            </h2>
+    <div className="flex flex-col h-screen">
+      <header className="flex items-center justify-between px-6 py-4 border-b border-arena-border bg-arena-surface/80 backdrop-blur-sm">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-arena-accent to-arena-blue flex items-center justify-center">
+            <Zap className="w-4 h-4 text-white" />
           </div>
-        ) : (
-          <div className="max-w-2xl mx-auto px-6 py-10 min-w-0">
-            <AnimatePresence mode="popLayout">
-              {messages.map((msg, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.25 }}
-                  className={`mb-6 ${msg.role === "user" ? "flex justify-end" : ""}`}
-                >
-                  {msg.role === "user" ? (
-                    <div className="inline-block max-w-[80%] rounded-2xl px-5 py-3 bg-arena-text text-white/90 text-sm leading-relaxed">
-                      {msg.content}
-                    </div>
-                  ) : (
-                    <div className="max-w-full">
-                      <div className={proseClasses}>
-                        <ReactMarkdown>{msg.content}</ReactMarkdown>
-                      </div>
-                      {msg.isPlan && phase === "ready" && (
-                        <motion.div
-                          initial={{ opacity: 0, y: 6 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: 0.3 }}
-                          className="mt-6"
-                        >
-                          <button
-                            onClick={() => navigate("/swarm")}
-                            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-arena-text text-white text-sm font-medium hover:bg-arena-text/90 transition-colors cursor-pointer"
-                          >
-                            <Check className="w-3.5 h-3.5" />
-                            Start Swarm
-                          </button>
-                        </motion.div>
-                      )}
-                    </div>
-                  )}
-                </motion.div>
-              ))}
-            </AnimatePresence>
+          <h1 className="text-lg font-semibold text-black tracking-tight">
+            Swarm
+          </h1>
+        </div>
+        <div className="text-xs text-arena-muted">
+          Multi-model prompt benchmarking
+        </div>
+      </header>
 
-            {typingIdx >= 0 && displayedContent && (
+      <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-6">
+        <div className="max-w-3xl mx-auto min-w-0 space-y-4">
+          {error && (
+            <div className="rounded-xl bg-red-500/10 border border-red-500/30 px-4 py-2 text-sm text-red-400">
+              {error}
+            </div>
+          )}
+          <AnimatePresence mode="popLayout">
+            {messages.map((msg, i) => (
               <motion.div
-                initial={{ opacity: 0, y: 8 }}
+                key={i}
+                initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="mb-6"
+                transition={{ duration: 0.3 }}
+                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
               >
-                <div className={proseClasses}>
+                <div
+                  className={`max-w-[85%] min-w-0 rounded-2xl px-5 py-3.5 overflow-hidden ${
+                    msg.role === "user"
+                      ? "bg-arena-accent/20 border border-arena-accent/30 text-black"
+                      : msg.isPlan
+                        ? "bg-arena-surface border border-arena-border"
+                        : "bg-arena-card border border-arena-border"
+                  }`}
+                >
+                  <div className="prose prose-sm max-w-none break-words [&_pre]:whitespace-pre-wrap [&_pre]:break-words [&_pre]:overflow-x-auto [&_code]:break-words [&_table]:w-full [&_th]:text-left [&_th]:p-2 [&_th]:border-b [&_th]:border-arena-border [&_td]:p-2 [&_td]:border-b [&_td]:border-arena-border/50 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:text-black [&_h3]:text-base [&_h3]:text-black/90 [&_strong]:text-black [&_p]:text-arena-text/90 [&_li]:text-arena-text/90">
+                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                  </div>
+                  {msg.isPlan && readyToConfirm && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.3 }}
+                      className="mt-4 pt-4 border-t border-arena-border"
+                    >
+                      <button
+                        onClick={handleApprove}
+                        disabled={isConfirming}
+                        className="w-full py-3 px-6 rounded-xl bg-gradient-to-r from-arena-accent to-arena-blue text-white font-semibold text-sm flex items-center justify-center gap-2 hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50"
+                      >
+                        <Check className="w-4 h-4" />
+                        {isConfirming ? "Starting..." : "Start Swarm"}
+                      </button>
+                    </motion.div>
+                  )}
+                </div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+
+          {typingIdx >= 0 && displayedContent && (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex justify-start"
+            >
+              <div className="max-w-[85%] min-w-0 rounded-2xl px-5 py-3.5 bg-arena-card border border-arena-border overflow-hidden">
+                <div className="prose prose-sm max-w-none break-words [&_pre]:whitespace-pre-wrap [&_pre]:break-words [&_pre]:overflow-x-auto [&_code]:break-words [&_table]:w-full [&_th]:text-left [&_th]:p-2 [&_th]:border-b [&_th]:border-arena-border [&_td]:p-2 [&_td]:border-b [&_td]:border-arena-border/50 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:text-black [&_h3]:text-base [&_h3]:text-black/90 [&_strong]:text-black [&_p]:text-arena-text/90 [&_li]:text-arena-text/90">
                   <ReactMarkdown>{displayedContent}</ReactMarkdown>
                 </div>
-              </motion.div>
-            )}
+              </div>
+            </motion.div>
+          )}
 
-            {isTyping && !displayedContent && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="mb-6"
-              >
-                <div className="flex gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-arena-muted/50 animate-bounce [animation-delay:0ms]" />
-                  <span className="w-1.5 h-1.5 rounded-full bg-arena-muted/50 animate-bounce [animation-delay:150ms]" />
-                  <span className="w-1.5 h-1.5 rounded-full bg-arena-muted/50 animate-bounce [animation-delay:300ms]" />
+          {isLoading && !displayedContent && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="flex justify-start"
+            >
+              <div className="rounded-2xl px-5 py-3.5 bg-arena-card border border-arena-border">
+                <div className="flex gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-arena-muted animate-bounce [animation-delay:0ms]" />
+                  <span className="w-2 h-2 rounded-full bg-arena-muted animate-bounce [animation-delay:150ms]" />
+                  <span className="w-2 h-2 rounded-full bg-arena-muted animate-bounce [animation-delay:300ms]" />
                 </div>
-              </motion.div>
-            )}
+              </div>
+            </motion.div>
+          )}
 
-            <div ref={messagesEndRef} />
-          </div>
-        )}
+          <div ref={messagesEndRef} />
+        </div>
       </div>
 
-      {/* Input */}
-      <div className="shrink-0 px-6 pb-6 pt-3">
-        <div className="max-w-2xl mx-auto">
-          <div className="flex items-center gap-3 bg-white border border-arena-border rounded-xl px-4 py-3 shadow-[0_1px_3px_rgba(0,0,0,0.04)] focus-within:border-arena-muted/40 transition-colors">
+      <div className="px-4 pb-6 pt-2">
+        <div className="max-w-3xl mx-auto">
+          <div className="relative flex items-end bg-arena-card border border-arena-border rounded-2xl focus-within:border-arena-accent/50 transition-colors">
             <textarea
-              ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Describe your agent..."
-              disabled={isTyping || phase === "ready" || phase === "planning"}
+              placeholder={
+                !sessionId
+                  ? "Connecting..."
+                  : "Describe the agent you want to build..."
+              }
+              disabled={!sessionId || isLoading || readyToConfirm}
               rows={1}
-              className="flex-1 bg-transparent text-arena-text placeholder:text-arena-muted/60 resize-none focus:outline-none disabled:opacity-40 text-sm leading-relaxed min-w-0"
+              className="flex-1 bg-transparent text-black placeholder:text-arena-muted px-5 py-4 resize-none focus:outline-none disabled:opacity-50 text-sm"
               style={{ maxHeight: 120 }}
             />
             <button
               onClick={handleSend}
-              disabled={!input.trim() || isTyping || phase === "ready"}
-              className="p-2 rounded-lg text-arena-muted hover:text-arena-text disabled:opacity-20 transition-colors cursor-pointer disabled:cursor-not-allowed shrink-0"
+              disabled={!input.trim() || isLoading || readyToConfirm || !sessionId}
+              className="m-2 p-2.5 rounded-xl bg-arena-accent text-white disabled:opacity-30 hover:bg-arena-accent/80 transition-colors cursor-pointer disabled:cursor-not-allowed"
             >
-              <ArrowRight className="w-4 h-4" />
+              <Send className="w-4 h-4" />
             </button>
           </div>
+          <p className="text-center text-xs text-arena-muted mt-3">
+            Swarm generates synthetic test data and evaluates across
+            multiple AI models
+          </p>
         </div>
       </div>
     </div>

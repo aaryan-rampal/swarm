@@ -12,6 +12,7 @@ Add these values to `.env`:
 ```bash
 OPENROUTER_API_KEY=<your_openrouter_api_key>
 OPENROUTER_MODEL=openai/gpt-4o-mini
+OPENROUTER_REASONING_MODEL=google/gemini-3-pro
 WEAVE_PROJECT=omnitrace-dev
 
 # Optional
@@ -52,3 +53,63 @@ curl -X POST "http://127.0.0.1:8000/brainstorm/full-test" \
 ```
 
 This returns a single payload containing `synthetic_data`, `judging_criteria`, and `prompt_template`, and logs each model call as a Weave-traced operation.
+
+## 6) Swarm SSE sample flow
+
+Create a brainstorming session:
+
+```bash
+curl -X POST "http://127.0.0.1:8000/api/planner/sessions"
+```
+
+Send a message and mark direction ready for confirm:
+
+```bash
+curl -X POST "http://127.0.0.1:8000/api/planner/sessions/<session_id>/messages" \
+  -H "Content-Type: application/json" \
+  -d '{"message":"Summarize my top important emails."}'
+```
+
+Confirm to spawn the sample swarm run:
+
+```bash
+curl -X POST "http://127.0.0.1:8000/api/planner/sessions/<session_id>/confirm"
+```
+
+Stream run events via SSE:
+
+```bash
+curl -N "http://127.0.0.1:8000/api/runs/<run_id>/stream"
+```
+
+SSE now includes chunk-level model events:
+
+- `llm_content_delta`
+- `llm_reasoning_delta`
+- `llm_usage_final`
+
+And explicit narrated workflow events:
+
+- `tool_call_started`
+- `narration_started`
+- `narration_delta`
+- `tool_call_result`
+- `narration_completed`
+
+Replay run events (cursor optional):
+
+```bash
+curl "http://127.0.0.1:8000/api/runs/<run_id>/events"
+```
+
+Sample scenario files live in:
+
+- `app/scenarios/email_priority/emails.json`
+- `app/scenarios/email_priority/prompt.md`
+- `app/scenarios/email_priority/evaluation.md`
+
+The latest committed SSE sample output is in:
+
+- `artifacts/sse/sample_output.txt`
+
+Each run now cleans old `.txt` artifacts and rewrites only `sample_output.txt` for a clean snapshot.

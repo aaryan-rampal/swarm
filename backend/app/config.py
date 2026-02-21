@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     openrouter_model: str = Field(
         default="openai/gpt-4o-mini", alias="OPENROUTER_MODEL"
     )
+    openrouter_reasoning_model: str = Field(
+        default="google/gemini-3-pro", alias="OPENROUTER_REASONING_MODEL"
+    )
 
     openrouter_site_url: str = Field(
         default="http://localhost:8000", alias="OPENROUTER_SITE_URL"
