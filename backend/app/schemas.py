@@ -1,4 +1,9 @@
+from uuid import UUID
+
 from pydantic import BaseModel, Field
+
+
+# --- Brainstorming (existing) ---
 
 
 class BrainstormTestRequest(BaseModel):
@@ -21,3 +26,117 @@ class BrainstormFullFlowResponse(BaseModel):
     synthetic_data: dict
     judging_criteria: dict
     prompt_template: str
+
+
+# --- Planner API ---
+
+
+class PlannerChatRequest(BaseModel):
+    conversation_id: UUID
+    message: str
+
+
+class PlannerChatResponse(BaseModel):
+    assistant_message: str
+    draft_spec: dict | None = None
+
+
+class ValidateSpecRequest(BaseModel):
+    spec: dict
+
+
+class ValidateSpecResponse(BaseModel):
+    valid: bool
+    errors: list[str] = Field(default_factory=list)
+
+
+# --- Benchmarks API ---
+
+
+class CreateBenchmarkRequest(BaseModel):
+    spec: dict
+
+
+class CreateBenchmarkResponse(BaseModel):
+    benchmark_id: UUID
+
+
+# --- Runs API ---
+
+
+class StartRunRequest(BaseModel):
+    benchmark_id: UUID
+    models: list[str]
+    repetitions: int = 5
+
+
+class StartRunResponse(BaseModel):
+    run_id: UUID
+    status: str
+
+
+class RunStatusResponse(BaseModel):
+    status: str
+    progress: float
+    total_tasks: int
+    completed_tasks: int
+
+
+class ModelStatus(BaseModel):
+    model: str
+    avg_score: float
+    completed: int
+    total: int
+
+
+class RunResultItem(BaseModel):
+    rep: int
+    trace: str
+    final: str
+    tool_calls: list[dict]
+    score: float
+    latency: int
+    cost: float
+
+
+class RunResultsResponse(BaseModel):
+    prompt: str
+    runs: list[RunResultItem] = Field(default_factory=list)
+
+
+class LeaderboardEntry(BaseModel):
+    model: str
+    mean_score: float
+    std_dev: float
+    hallucination_rate: float
+    cost_total: float
+    latency_p50: int
+
+
+class RunMetricsResponse(BaseModel):
+    cost_vs_score: list[dict] = Field(default_factory=list)
+    stability_data: list[dict] = Field(default_factory=list)
+    hallucination_rates: list[dict] = Field(default_factory=list)
+
+
+class ModelBreakdown(BaseModel):
+    model: str
+    scores: list[float] = Field(default_factory=list)
+    avg_score: float
+
+
+class PromptBreakdownResponse(BaseModel):
+    prompt_id: int
+    prompt: str
+    models: list[ModelBreakdown] = Field(default_factory=list)
+
+
+# --- Analysis API ---
+
+
+class AnalysisChatRequest(BaseModel):
+    message: str
+
+
+class AnalysisChatResponse(BaseModel):
+    response: str

@@ -11,3 +11,4 @@ omnitrace_backend.egg-info/SOURCES.txt
 omnitrace_backend.egg-info/dependency_links.txt
 omnitrace_backend.egg-info/requires.txt
 omnitrace_backend.egg-info/top_level.txt
+tests/test_brainstorming_full_flow.py

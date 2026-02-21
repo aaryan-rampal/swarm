@@ -7,6 +7,7 @@ from app.agents.brainstorming_agent import (
     run_brainstorming_full_flow,
 )
 from app.config import get_settings
+from app.routers import benchmarks, planner, runs
 from app.schemas import (
     BrainstormFullFlowResponse,
     BrainstormTestRequest,
@@ -23,6 +24,11 @@ async def lifespan(_: FastAPI):
 
 settings = get_settings()
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
+
+# API routers
+app.include_router(planner.router, prefix="/api/planner", tags=["planner"])
+app.include_router(benchmarks.router, prefix="/api", tags=["benchmarks"])
+app.include_router(runs.router, prefix="/api/runs", tags=["runs"])
 
 
 @app.get("/health")
