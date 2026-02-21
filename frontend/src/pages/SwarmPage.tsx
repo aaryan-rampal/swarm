@@ -1,7 +1,41 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, ArrowRight, Eye } from "lucide-react";
+import { X, ArrowRight, Eye, RotateCcw } from "lucide-react";
+import { useApp } from "../store";
+
+const STORAGE_KEY = "swarm-eval-status";
+
+function loadPersistedStatus(): {
+  progresses: Record<string, number>;
+  allDone: boolean;
+} | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { progresses?: Record<string, number>; allDone?: boolean };
+    if (!parsed.progresses || typeof parsed.allDone !== "boolean") return null;
+    return { progresses: parsed.progresses, allDone: parsed.allDone };
+  } catch {
+    return null;
+  }
+}
+
+function savePersistedStatus(progresses: Record<string, number>, allDone: boolean) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ progresses, allDone }));
+  } catch {
+    // ignore quota / privacy errors
+  }
+}
+
+function clearPersistedStatus() {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
 
 interface ModelConfig {
   id: string;
@@ -317,14 +351,29 @@ function StreamingModal({
 
 export default function SwarmPage() {
   const navigate = useNavigate();
-  const [progresses, setProgresses] = useState<Record<string, number>>({});
+  const { userPrompt, addEval } = useApp();
+  const [progresses, setProgresses] = useState<Record<string, number>>(() => {
+    const persisted = loadPersistedStatus();
+    if (persisted?.allDone) return persisted.progresses;
+    const initial: Record<string, number> = {};
+    MODELS.forEach((m) => (initial[m.id] = persisted?.progresses[m.id] ?? 0));
+    return initial;
+  });
   const [selectedModel, setSelectedModel] = useState<ModelConfig | null>(null);
-  const [allDone, setAllDone] = useState(false);
+  const [allDone, setAllDone] = useState(() => loadPersistedStatus()?.allDone ?? false);
+  const [runKey, setRunKey] = useState(0);
 
   useEffect(() => {
+    const persisted = loadPersistedStatus();
+    if (persisted?.allDone) return; // already complete, no intervals needed
+
     const initial: Record<string, number> = {};
-    MODELS.forEach((m) => (initial[m.id] = 0));
-    setProgresses(initial);
+    MODELS.forEach((m) => (initial[m.id] = progresses[m.id] ?? 0));
+    const hasProgress = Object.values(initial).some((v) => v > 0);
+    if (!hasProgress) {
+      MODELS.forEach((m) => (initial[m.id] = 0));
+      setProgresses(initial);
+    }
 
     const intervals = MODELS.map((model) => {
       const tickMs = 100;
@@ -339,15 +388,31 @@ export default function SwarmPage() {
     });
 
     return () => intervals.forEach(clearInterval);
-  }, []);
+  }, [runKey]);
 
   useEffect(() => {
     const done = MODELS.every((m) => (progresses[m.id] ?? 0) >= 100);
-    if (done && !allDone) setAllDone(true);
+    if (done && !allDone) {
+      setAllDone(true);
+      addEval(userPrompt || "Email triage summary");
+    }
+  }, [progresses, allDone, userPrompt, addEval]);
+
+  useEffect(() => {
+    savePersistedStatus(progresses, allDone);
   }, [progresses, allDone]);
 
   const handleModelClick = useCallback((model: ModelConfig) => {
     setSelectedModel(model);
+  }, []);
+
+  const handleNewRun = useCallback(() => {
+    clearPersistedStatus();
+    const initial: Record<string, number> = {};
+    MODELS.forEach((m) => (initial[m.id] = 0));
+    setProgresses(initial);
+    setAllDone(false);
+    setRunKey((k) => k + 1);
   }, []);
 
   return (
@@ -362,15 +427,26 @@ export default function SwarmPage() {
           <div className="flex items-center gap-4">
             <span>400 total evaluations</span>
             {allDone && (
-              <motion.button
-                initial={{ opacity: 0, x: 10 }}
-                animate={{ opacity: 1, x: 0 }}
-                onClick={() => navigate("/results")}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-arena-text text-white text-sm font-medium hover:bg-arena-text/90 transition-colors cursor-pointer"
-              >
-                View Results
-                <ArrowRight className="w-4 h-4" />
-              </motion.button>
+              <>
+                <motion.button
+                  initial={{ opacity: 0, x: 10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  onClick={handleNewRun}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-arena-muted hover:text-arena-text hover:bg-arena-border/30 text-sm font-medium transition-colors cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  New Run
+                </motion.button>
+                <motion.button
+                  initial={{ opacity: 0, x: 10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  onClick={() => navigate("/results")}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-arena-text text-white text-sm font-medium hover:bg-arena-text/90 transition-colors cursor-pointer"
+                >
+                  View Results
+                  <ArrowRight className="w-4 h-4" />
+                </motion.button>
+              </>
             )}
           </div>
         </div>
