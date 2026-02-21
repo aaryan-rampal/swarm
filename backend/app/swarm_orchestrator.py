@@ -194,8 +194,8 @@ async def run_swarm(
 
     tasks = [
         _run_single_model(run_id, model, rep, messages, semaphore)
-        for model in models
         for rep in range(reps)
+        for model in models
     ]
 
     results = await asyncio.gather(*tasks, return_exceptions=True)

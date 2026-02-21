@@ -1,6 +1,10 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import {
   X,
   ArrowRight,
@@ -10,6 +14,7 @@ import {
   Search,
   Check,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   Play,
 } from "lucide-react";
@@ -62,7 +67,7 @@ interface ModelConfig {
 interface ModelState {
   config: ModelConfig;
   status: "pending" | "running" | "completed" | "error";
-  streamContent: string;
+  repContents: Record<number, string>;
   completedReps: number;
   totalReps: number;
   activeRep: boolean;
@@ -176,13 +181,21 @@ function StreamingModal({
   progress: number;
   onClose: () => void;
 }) {
-  const contentRef = useRef<HTMLPreElement>(null);
+  const [currentRep, setCurrentRep] = useState(0);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const content = model.repContents[currentRep] || "";
+
+  const isRepStreaming =
+    model.status === "running" && currentRep >= model.completedReps;
 
   useEffect(() => {
     if (contentRef.current) {
       contentRef.current.scrollTop = contentRef.current.scrollHeight;
     }
-  }, [model.streamContent]);
+  }, [content]);
+
+  const hasPrev = currentRep > 0;
+  const hasNext = currentRep < model.totalReps - 1;
 
   return (
     <motion.div
@@ -216,6 +229,31 @@ function StreamingModal({
             </span>
           </div>
           <div className="flex items-center gap-3">
+            <div className="flex items-center gap-0.5">
+              <button
+                disabled={!hasPrev}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setCurrentRep((r) => r - 1);
+                }}
+                className="p-1 rounded text-arena-muted hover:text-arena-text disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-xs font-mono text-arena-muted min-w-[4.5rem] text-center select-none">
+                Rep {currentRep + 1}/{model.totalReps}
+              </span>
+              <button
+                disabled={!hasNext}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setCurrentRep((r) => r + 1);
+                }}
+                className="p-1 rounded text-arena-muted hover:text-arena-text disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
             <span className="text-xs font-mono text-arena-muted">
               {Math.round(progress)}%
             </span>
@@ -227,19 +265,69 @@ function StreamingModal({
             </button>
           </div>
         </div>
-        <pre
+        <div
           ref={contentRef}
-          className="flex-1 overflow-y-auto p-5 font-mono text-sm text-arena-text/80 whitespace-pre-wrap leading-relaxed"
+          className="flex-1 overflow-y-auto p-5 text-sm text-arena-text/80 leading-relaxed prose prose-invert max-w-none
+            [&_h1]:text-lg [&_h1]:font-bold [&_h1]:text-arena-text [&_h1]:mt-6 [&_h1]:mb-3
+            [&_h2]:text-base [&_h2]:font-semibold [&_h2]:text-arena-text [&_h2]:mt-5 [&_h2]:mb-2 [&_h2]:pb-1.5 [&_h2]:border-b [&_h2]:border-arena-border/40
+            [&_h3]:text-sm [&_h3]:font-medium [&_h3]:text-arena-text/90 [&_h3]:mt-4 [&_h3]:mb-2
+            [&_p]:my-2 [&_p]:leading-7
+            [&_ul]:my-2 [&_ul]:space-y-0.5 [&_ol]:my-2
+            [&_li]:leading-7 [&_li]:my-0
+            [&_strong]:text-arena-text [&_strong]:font-semibold
+            [&_a]:text-arena-blue [&_a]:underline [&_a]:underline-offset-2
+            [&_hr]:border-arena-border/40 [&_hr]:my-4
+            [&_blockquote]:border-l-2 [&_blockquote]:border-arena-accent/40 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-arena-muted
+            [&_table]:w-full [&_table]:my-3 [&_table]:text-xs
+            [&_th]:text-left [&_th]:px-3 [&_th]:py-2 [&_th]:border-b [&_th]:border-arena-border/60 [&_th]:text-arena-text [&_th]:font-medium
+            [&_td]:px-3 [&_td]:py-2 [&_td]:border-b [&_td]:border-arena-border/30 [&_td]:text-arena-text/70"
         >
-          {model.streamContent || (
+          {content ? (
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                code({ className, children, ...props }) {
+                  const match = /language-(\w+)/.exec(className || "");
+                  const inline = !match;
+                  return inline ? (
+                    <code
+                      className="bg-arena-border/40 text-arena-accent px-1.5 py-0.5 rounded text-[13px] font-mono"
+                      {...props}
+                    >
+                      {children}
+                    </code>
+                  ) : (
+                    <SyntaxHighlighter
+                      style={oneDark}
+                      language={match[1]}
+                      PreTag="div"
+                      customStyle={{
+                        background: "rgba(0,0,0,0.3)",
+                        borderRadius: "0.75rem",
+                        border: "1px solid rgba(255,255,255,0.06)",
+                        fontSize: "0.82rem",
+                        padding: "1rem 1.25rem",
+                        lineHeight: "1.7",
+                        margin: "0.75rem 0",
+                      }}
+                    >
+                      {String(children).replace(/\n$/, "")}
+                    </SyntaxHighlighter>
+                  );
+                },
+              }}
+            >
+              {content}
+            </ReactMarkdown>
+          ) : (
             <span className="text-arena-muted italic">
               Waiting for output...
             </span>
           )}
-          {model.status !== "completed" && model.status !== "error" && (
+          {isRepStreaming && (
             <span className="inline-block w-2 h-4 bg-arena-accent/80 animate-pulse ml-0.5 align-middle" />
           )}
-        </pre>
+        </div>
       </motion.div>
     </motion.div>
   );
@@ -557,7 +645,7 @@ export default function SwarmPage() {
         initial[m.id] = {
           config: m,
           status: "pending",
-          streamContent: "",
+          repContents: {},
           completedReps: 0,
           totalReps: 5,
           activeRep: false,
@@ -585,7 +673,6 @@ export default function SwarmPage() {
         const payload = JSON.parse(e.data);
         const modelId: string = payload.model_id;
         const repIndex: number = payload.rep_index;
-        if (repIndex !== 0) return;
         const delta: string =
           payload.content_delta || payload.content || "";
         setModelStates((prev) => {
@@ -593,7 +680,13 @@ export default function SwarmPage() {
           if (!ms) return prev;
           return {
             ...prev,
-            [modelId]: { ...ms, streamContent: ms.streamContent + delta },
+            [modelId]: {
+              ...ms,
+              repContents: {
+                ...ms.repContents,
+                [repIndex]: (ms.repContents[repIndex] || "") + delta,
+              },
+            },
           };
         });
       });
