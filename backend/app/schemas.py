@@ -36,6 +36,35 @@ class PlannerChatRequest(BaseModel):
     message: str
 
 
+class PlannerSessionCreateResponse(BaseModel):
+    session_id: UUID
+    status: str
+
+
+class PlannerSessionMessageRequest(BaseModel):
+    message: str
+
+
+class PlannerSessionMessageResponse(BaseModel):
+    assistant_message: str
+    ready_to_confirm: bool
+    draft_prompt: str
+
+
+class PlannerSessionResponse(BaseModel):
+    session_id: UUID
+    status: str
+    messages: list[dict] = Field(default_factory=list)
+    draft_prompt: str
+    ready_to_confirm: bool
+
+
+class PlannerConfirmResponse(BaseModel):
+    run_id: UUID
+    status: str
+    sse_sample_path: str
+
+
 class PlannerChatResponse(BaseModel):
     assistant_message: str
     draft_spec: dict | None = None
@@ -102,6 +131,25 @@ class RunResultItem(BaseModel):
 class RunResultsResponse(BaseModel):
     prompt: str
     runs: list[RunResultItem] = Field(default_factory=list)
+
+
+class RunEvent(BaseModel):
+    event_id: str
+    cursor: str
+    run_id: UUID
+    session_id: UUID
+    agent_id: str
+    event_type: str
+    phase: str
+    content: str
+    model: str
+    timestamp: str
+    weave: dict = Field(default_factory=dict)
+
+
+class RunEventsResponse(BaseModel):
+    events: list[RunEvent] = Field(default_factory=list)
+    next_cursor: str | None = None
 
 
 class LeaderboardEntry(BaseModel):

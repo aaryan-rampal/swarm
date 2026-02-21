@@ -1,0 +1,44 @@
+{
+  "emails": [
+    {
+      "id": "e1",
+      "from": "General Counsel <legal@company.com>",
+      "subject": "Action required today: customer data retention policy violation",
+      "received_at": "2026-02-21T08:10:00Z",
+      "body": "Audit found a retention policy exception in production logs. We need a response plan and owner by 5pm.",
+      "priority": "important"
+    },
+    {
+      "id": "e2",
+      "from": "Payroll Ops <payroll@company.com>",
+      "subject": "Urgent: direct deposit file mismatch for next payroll",
+      "received_at": "2026-02-21T08:45:00Z",
+      "body": "Three employee records failed validation after benefits updates. Please confirm corrected amounts before noon.",
+      "priority": "important"
+    },
+    {
+      "id": "e3",
+      "from": "Product Marketing <pmm@company.com>",
+      "subject": "Draft launch brief for next week",
+      "received_at": "2026-02-21T09:15:00Z",
+      "body": "Sharing the launch narrative draft. Feedback requested by Tuesday, non-blocking for today.",
+      "priority": "kinda_important"
+    },
+    {
+      "id": "e4",
+      "from": "Deals Team <offers@random-store.example>",
+      "subject": "FLASH SALE: 90% OFF office gadgets",
+      "received_at": "2026-02-21T07:05:00Z",
+      "body": "Limited-time coupon. Click now.",
+      "priority": "spam"
+    },
+    {
+      "id": "e5",
+      "from": "Crypto Weekly <noreply@coinblast.example>",
+      "subject": "Top meme coins to buy this weekend",
+      "received_at": "2026-02-21T06:40:00Z",
+      "body": "Promotional newsletter with affiliate links.",
+      "priority": "spam"
+    }
+  ]
+}

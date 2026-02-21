@@ -1,5 +1,6 @@
 **pycache
 **.pyc
+backend/omnitrace_backend.egg-info
 **.env
 backend/.env
 # Byte-compiled / optimized / DLL files

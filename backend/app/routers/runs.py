@@ -1,6 +1,7 @@
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi.responses import StreamingResponse
 
 from app.schemas import (
     AnalysisChatRequest,
@@ -9,12 +10,15 @@ from app.schemas import (
     ModelBreakdown,
     ModelStatus,
     PromptBreakdownResponse,
+    RunEvent,
+    RunEventsResponse,
     RunMetricsResponse,
     RunResultsResponse,
     RunStatusResponse,
     StartRunRequest,
     StartRunResponse,
 )
+from app.swarm_runtime import runtime
 
 router = APIRouter()
 
@@ -49,6 +53,40 @@ async def get_run_results(
     prompt_id: int | None = Query(default=None),
 ) -> RunResultsResponse:
     return RunResultsResponse(prompt="Stub prompt", runs=[])
+
+
+@router.get("/{run_id}/events", response_model=RunEventsResponse)
+async def get_run_events(
+    run_id: UUID,
+    cursor: str | None = Query(default=None),
+) -> RunEventsResponse:
+    if run_id not in runtime.runs:
+        raise HTTPException(status_code=404, detail="Run not found")
+    events = runtime.get_events(run_id, cursor=cursor)
+    response_events = [RunEvent(**event) for event in events]
+    next_cursor = response_events[-1].cursor if response_events else cursor
+    return RunEventsResponse(events=response_events, next_cursor=next_cursor)
+
+
+@router.get("/{run_id}/stream")
+async def stream_run_events(run_id: UUID) -> StreamingResponse:
+    if run_id not in runtime.runs:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    events = runtime.get_events(run_id)
+
+    async def event_stream():
+        for event in events:
+            yield runtime.to_sse_block(event)
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @router.websocket("/{run_id}/stream")
