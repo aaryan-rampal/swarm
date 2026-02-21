@@ -1,7 +1,7 @@
-# OmniTrace Agents
+# Swarm
 
 ## Overview
-OmniTrace is a large-scale reasoning trace evaluation platform that runs 10-20 LLMs across multiple providers with 5 repetitions per prompt, captures full reasoning traces, and automatically evaluates reasoning quality.
+Swarm is a large-scale reasoning trace evaluation platform that runs 10-20 LLMs across multiple providers with 5 repetitions per prompt, captures full reasoning traces, and automatically evaluates reasoning quality.
 
 ## Agent Architecture
 
