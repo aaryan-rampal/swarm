@@ -1,13 +1,22 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
+logger = logging.getLogger(__name__)
+
 from pydantic import BaseModel
 
+from app.agents.judge_agent import (
+    EVAL_QUESTIONS,
+    HARDCODED_RESPONSES,
+    judge_single_response,
+    run_judge_sweep,
+)
 from app.model_registry import (
     DEFAULT_MODEL_IDS,
     load_available_models,
@@ -17,6 +26,9 @@ from app.model_registry import (
 from app.schemas import (
     AnalysisChatRequest,
     AnalysisChatResponse,
+    JudgeModelResult,
+    JudgeQuestionResult,
+    JudgeSweepResponse,
     LeaderboardEntry,
     ModelBreakdown,
     ModelStatus,
@@ -33,6 +45,13 @@ from app.swarm_orchestrator import run_swarm
 from app.swarm_runtime import runtime
 
 router = APIRouter()
+
+_runs: dict[str, dict] = {}
+
+
+@router.get("/questions")
+async def get_eval_questions() -> list[dict[str, str]]:
+    return EVAL_QUESTIONS
 
 
 def _spec_to_dict(m):
@@ -75,30 +94,99 @@ async def start_swarm_run(payload: StartSwarmRequest | None = None):
 
 @router.post("", response_model=StartRunResponse)
 async def start_run(payload: StartRunRequest) -> StartRunResponse:
-    return StartRunResponse(run_id=uuid4(), status="running")
+    run_id = uuid4()
+    _runs[str(run_id)] = {"status": "running", "result": None}
+
+    async def _run_in_background(rid: str) -> None:
+        try:
+            result = await run_judge_sweep()
+            _runs[rid] = {"status": "completed", "result": result}
+        except Exception as exc:
+            _runs[rid] = {"status": "failed", "error": str(exc), "result": None}
+
+    asyncio.create_task(_run_in_background(str(run_id)))
+    return StartRunResponse(run_id=run_id, status="running")
+
+
+@router.post("/judge", response_model=JudgeSweepResponse)
+async def run_judge() -> JudgeSweepResponse:
+    """Run the LLM judge sweep across all models synchronously and return results."""
+    logger.info("Starting judge sweep...")
+    result = await run_judge_sweep()
+    logger.info("Judge sweep done: %d models scored", len(result.get("models", {})))
+
+    models_out: dict[str, JudgeModelResult] = {}
+    for model_id, data in result["models"].items():
+        questions = [
+            JudgeQuestionResult(
+                id=q["id"],
+                category=q["category"],
+                question=q["question"],
+                answer=data["answers"].get(q["id"], "no"),
+            )
+            for q in EVAL_QUESTIONS
+        ]
+        models_out[model_id] = JudgeModelResult(
+            model_id=model_id,
+            scores=data["scores"],
+            answers=data["answers"],
+            questions=questions,
+            latency_ms=data["latency_ms"],
+            tokens_in=data["tokens_in"],
+            tokens_out=data["tokens_out"],
+            judge_model=data["judge_model"],
+        )
+
+    return JudgeSweepResponse(
+        models=models_out,
+        ranking=result["ranking"],
+        best_model=result["best_model"],
+    )
 
 
 @router.get("/{run_id}", response_model=RunStatusResponse)
 async def get_run_status(run_id: UUID) -> RunStatusResponse:
-    if run_id not in runtime.runs:
-        raise HTTPException(status_code=404, detail="Run not found")
-    run = runtime.runs[run_id]
-    results = runtime.get_results(run_id)
-    total = len(results) if results else 0
-    completed = sum(1 for r in results.values() if r.get("status") == "completed")
+    if run_id in runtime.runs:
+        run = runtime.runs[run_id]
+        results = runtime.get_results(run_id)
+        total = len(results) if results else 0
+        completed = sum(1 for r in results.values() if r.get("status") == "completed")
+        return RunStatusResponse(
+            status=run["status"],
+            progress=completed / total * 100 if total else 0.0,
+            total_tasks=total,
+            completed_tasks=completed,
+        )
+    run = _runs.get(str(run_id))
+    if not run:
+        return RunStatusResponse(status="unknown", progress=0.0, total_tasks=0, completed_tasks=0)
+    done = run["status"] == "completed"
+    total = len(HARDCODED_RESPONSES)
     return RunStatusResponse(
         status=run["status"],
-        progress=completed / total * 100 if total else 0.0,
+        progress=1.0 if done else 0.5,
         total_tasks=total,
-        completed_tasks=completed,
+        completed_tasks=total if done else 0,
     )
 
 
 @router.get("/{run_id}/models", response_model=list[ModelStatus])
 async def get_run_models(run_id: UUID) -> list[ModelStatus]:
+    run = _runs.get(str(run_id))
+    if not run or not run.get("result"):
+        return [
+            ModelStatus(model=mid, avg_score=0.0, completed=0, total=1)
+            for mid in HARDCODED_RESPONSES
+        ]
+    result = run["result"]
     return [
-        ModelStatus(model="gpt-4o", avg_score=0.0, completed=0, total=20),
-        ModelStatus(model="claude-3-sonnet", avg_score=0.0, completed=0, total=20),
+        ModelStatus(
+            model=mid,
+            avg_score=data["scores"]["overall"],
+            completed=1,
+            total=1,
+        )
+        for mid, data in result["models"].items()
     ]
 
 
@@ -108,7 +196,7 @@ async def get_run_results(
     model: str | None = Query(default=None),
     prompt_id: int | None = Query(default=None),
 ) -> RunResultsResponse:
-    return RunResultsResponse(prompt="Stub prompt", runs=[])
+    return RunResultsResponse(prompt="Email triage: summarize top 3 important emails", runs=[])
 
 
 @router.get("/{run_id}/events", response_model=RunEventsResponse)
@@ -152,16 +240,22 @@ async def stream_run_events(run_id: UUID) -> StreamingResponse:
 
 @router.get("/{run_id}/leaderboard", response_model=list[LeaderboardEntry])
 async def get_leaderboard(run_id: UUID) -> list[LeaderboardEntry]:
-    return [
-        LeaderboardEntry(
-            model="gpt-4o",
-            mean_score=0.0,
+    run = _runs.get(str(run_id))
+    if not run or not run.get("result"):
+        return []
+    result = run["result"]
+    entries = []
+    for mid in result["ranking"]:
+        data = result["models"][mid]
+        entries.append(LeaderboardEntry(
+            model=mid,
+            mean_score=data["scores"]["overall"],
             std_dev=0.0,
             hallucination_rate=0.0,
             cost_total=0.0,
-            latency_p50=0,
-        ),
-    ]
+            latency_p50=data["latency_ms"],
+        ))
+    return entries
 
 
 @router.get("/{run_id}/metrics", response_model=RunMetricsResponse)
@@ -177,7 +271,7 @@ async def get_run_metrics(run_id: UUID) -> RunMetricsResponse:
 async def get_prompt_breakdown(run_id: UUID, prompt_id: int) -> PromptBreakdownResponse:
     return PromptBreakdownResponse(
         prompt_id=prompt_id,
-        prompt="Stub prompt",
+        prompt="Email triage: summarize top 3 important emails",
         models=[
             ModelBreakdown(model="gpt-4o", scores=[], avg_score=0.0),
         ],

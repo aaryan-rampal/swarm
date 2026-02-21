@@ -185,6 +185,33 @@ class PromptBreakdownResponse(BaseModel):
     models: list[ModelBreakdown] = Field(default_factory=list)
 
 
+# --- Judge API ---
+
+
+class JudgeQuestionResult(BaseModel):
+    id: str
+    category: str
+    question: str
+    answer: str  # "yes" or "no"
+
+
+class JudgeModelResult(BaseModel):
+    model_id: str
+    scores: dict[str, float]
+    answers: dict[str, str]
+    questions: list[JudgeQuestionResult] = Field(default_factory=list)
+    latency_ms: int
+    tokens_in: int
+    tokens_out: int
+    judge_model: str
+
+
+class JudgeSweepResponse(BaseModel):
+    models: dict[str, JudgeModelResult]
+    ranking: list[str]
+    best_model: str | None
+
+
 # --- Analysis API ---
 
 

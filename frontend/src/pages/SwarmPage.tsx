@@ -18,6 +18,7 @@ import {
   ChevronRight,
   Play,
 } from "lucide-react";
+import { useApp, fetchJudgeSweep } from "../store";
 
 const STORAGE_KEY = "swarm-run-state";
 
@@ -604,6 +605,9 @@ type Phase = "selecting" | "running" | "done";
 
 export default function SwarmPage() {
   const navigate = useNavigate();
+  const { userPrompt, addEval, setJudgeResult } = useApp();
+  const [judging, setJudging] = useState(false);
+  const [judgeError, setJudgeError] = useState<string | null>(null);
 
   const persisted = useRef(loadPersistedRun());
   const initialPhase: Phase =
@@ -735,6 +739,19 @@ export default function SwarmPage() {
         setAllDone(true);
         setPhase("done");
         es.close();
+        setJudging(true);
+        setJudgeError(null);
+        fetchJudgeSweep()
+          .then((result) => {
+            setJudgeResult(result);
+            addEval(userPrompt || "Email triage summary", result);
+          })
+          .catch((err) => {
+            console.error("Judge sweep failed:", err);
+            setJudgeError(String(err));
+            addEval(userPrompt || "Email triage summary");
+          })
+          .finally(() => setJudging(false));
       });
 
       es.onerror = () => {
@@ -746,7 +763,7 @@ export default function SwarmPage() {
       setError(err instanceof Error ? err.message : "Failed to start swarm");
       setPhase("selecting");
     }
-  }, []);
+  }, [userPrompt, addEval, setJudgeResult]);
 
   useEffect(() => {
     if (allDone && Object.keys(modelStates).length > 0) {
@@ -798,6 +815,8 @@ export default function SwarmPage() {
     setError(null);
     setSelectedModelId(null);
     setPhase("selecting");
+    setJudging(false);
+    setJudgeError(null);
   }, []);
 
   // ---- Selecting phase ----
@@ -833,11 +852,15 @@ export default function SwarmPage() {
       <div className="px-6 py-3 border-b border-arena-border/50 bg-arena-surface/40 shrink-0">
         <div className="flex items-center justify-between text-xs text-arena-muted">
           <span>
-            {completedCount}/{models.length} models complete
+            {judging
+              ? "Judging responses with Gemini 2.5 Flash..."
+              : judgeError
+                ? "Judge failed — using cached scores"
+                : `${completedCount}/${models.length} models complete`}
           </span>
           <div className="flex items-center gap-4">
             <span>{totalEvals} total evaluations</span>
-            {allDone && (
+            {allDone && !judging && (
               <>
                 <motion.button
                   initial={{ opacity: 0, x: 10 }}

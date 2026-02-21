@@ -1,11 +1,38 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
 
+const API_BASE = "http://localhost:8000";
 const EVALS_STORAGE_KEY = "swarm-evals";
+const JUDGE_RESULTS_KEY = "swarm-judge-results";
+
+export interface JudgeScores {
+  correctness: number;
+  quality: number;
+  reasoning: number;
+  usability: number;
+  overall: number;
+}
+
+export interface JudgeModelResult {
+  model_id: string;
+  scores: JudgeScores;
+  answers: Record<string, string>;
+  latency_ms: number;
+  tokens_in: number;
+  tokens_out: number;
+  judge_model: string;
+}
+
+export interface JudgeSweepResult {
+  models: Record<string, JudgeModelResult>;
+  ranking: string[];
+  best_model: string | null;
+}
 
 export interface EvalEntry {
   id: string;
   prompt: string;
   timestamp: number;
+  judgeResult?: JudgeSweepResult;
 }
 
 function loadEvals(): EvalEntry[] {
@@ -31,11 +58,41 @@ function saveEvals(evals: EvalEntry[]) {
   }
 }
 
+function loadJudgeResult(): JudgeSweepResult | null {
+  try {
+    const raw = localStorage.getItem(JUDGE_RESULTS_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as JudgeSweepResult;
+  } catch {
+    return null;
+  }
+}
+
+function saveJudgeResult(result: JudgeSweepResult | null) {
+  try {
+    if (result) {
+      localStorage.setItem(JUDGE_RESULTS_KEY, JSON.stringify(result));
+    } else {
+      localStorage.removeItem(JUDGE_RESULTS_KEY);
+    }
+  } catch {
+    // ignore
+  }
+}
+
+export async function fetchJudgeSweep(): Promise<JudgeSweepResult> {
+  const res = await fetch(`${API_BASE}/api/runs/judge`, { method: "POST" });
+  if (!res.ok) throw new Error(`Judge API returned ${res.status}`);
+  return res.json();
+}
+
 interface AppState {
   userPrompt: string;
   setUserPrompt: (p: string) => void;
   evals: EvalEntry[];
-  addEval: (prompt: string) => void;
+  addEval: (prompt: string, judgeResult?: JudgeSweepResult) => void;
+  judgeResult: JudgeSweepResult | null;
+  setJudgeResult: (r: JudgeSweepResult | null) => void;
   sessionId: string | null;
   setSessionId: (id: string | null) => void;
   runId: string | null;
@@ -47,16 +104,22 @@ const AppContext = createContext<AppState | null>(null);
 export function AppProvider({ children }: { children: ReactNode }) {
   const [userPrompt, setUserPrompt] = useState("");
   const [evals, setEvals] = useState<EvalEntry[]>(loadEvals);
+  const [judgeResult, setJudgeResult] = useState<JudgeSweepResult | null>(loadJudgeResult);
 
   useEffect(() => {
     saveEvals(evals);
   }, [evals]);
 
-  const addEval = (prompt: string) => {
+  useEffect(() => {
+    saveJudgeResult(judgeResult);
+  }, [judgeResult]);
+
+  const addEval = (prompt: string, jr?: JudgeSweepResult) => {
     const entry: EvalEntry = {
       id: crypto.randomUUID(),
       prompt,
       timestamp: Date.now(),
+      judgeResult: jr,
     };
     setEvals((prev) => [entry, ...prev]);
   };
@@ -71,6 +134,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setUserPrompt,
         evals,
         addEval,
+        judgeResult,
+        setJudgeResult,
         sessionId,
         setSessionId,
         runId,

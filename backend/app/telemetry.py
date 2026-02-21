@@ -19,5 +19,6 @@ def init_weave() -> None:
     try:
         weave.init(settings.weave_project)
         _WEAVE_INITIALIZED = True
-    except Exception:
-        logger.warning("Weave init failed — running without trace capture", exc_info=True)
+    except Exception as exc:
+        logger.warning("Weave init failed (continuing without tracing): %s", exc)
+        _WEAVE_INITIALIZED = False
