@@ -150,4 +150,6 @@ cython_debug/
 # OS files
 .DS_Store
 Thumbs.db
->>>>>>> 92fae9baccc5e4cd069884476cf586b2484e2610
+
+# Generated artifacts
+backend/artifacts/

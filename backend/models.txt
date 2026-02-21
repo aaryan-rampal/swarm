@@ -1,0 +1,6 @@
+openai/gpt-4o-mini
+anthropic/claude-3.5-haiku
+google/gemini-2.0-flash-001
+mistralai/mistral-small-3.1-24b-instruct
+meta-llama/llama-4-scout
+qwen/qwen3-8b

@@ -3,6 +3,10 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.model_registry import ModelSpec
+
+
+_SINGLE_MODEL = [ModelSpec(id="test/fake-model", name="Fake-Model", provider="Test", color="#10b981")]
 
 
 def test_sample_email_scenario_artifacts_exist() -> None:
@@ -21,137 +25,111 @@ def test_sample_email_scenario_artifacts_exist() -> None:
     assert emails_text.count('"priority": "spam"') == 2
 
 
-def test_confirm_run_emits_events_and_writes_txt() -> None:
-    async def fake_chat_completion_stream(messages, model=None, reasoning=None):  # noqa: ARG001
-        yield {
-            "content_delta": "Top priority email is legal retention policy.",
-            "raw": {"choices": [{"delta": {"content": "Top priority email"}}]},
-        }
-        yield {
-            "reasoning_details": [
-                {
-                    "type": "reasoning.summary",
-                    "summary": "Prioritized legal and payroll risk above marketing updates.",
-                }
-            ],
-            "raw": {
-                "choices": [
-                    {"delta": {"reasoning_details": [{"type": "reasoning.summary"}]}}
-                ]
-            },
-        }
-        yield {
-            "usage": {
-                "prompt_tokens": 120,
-                "completion_tokens": 80,
-                "reasoning_tokens": 40,
-            },
-            "raw": {"usage": {"prompt_tokens": 120}},
-        }
+def test_confirm_run_emits_events_and_exports_results() -> None:
+    async def fake_stream(messages, model=None, reasoning=None):  # noqa: ARG001
+        yield {"content_delta": "Scanning legal and payroll emails.", "raw": {}}
+        yield {"content_delta": " Ranking by urgency.", "raw": {}}
+        yield {"usage": {"prompt_tokens": 120, "completion_tokens": 80}, "raw": {}}
         yield {"done": True}
 
     from app import swarm_orchestrator
-
-    with TestClient(app) as client:
-        from pytest import MonkeyPatch
-
-        monkeypatch = MonkeyPatch()
-        monkeypatch.setattr(
-            swarm_orchestrator,
-            "chat_completion_stream",
-            fake_chat_completion_stream,
-        )
-
-        create_response = client.post("/api/planner/sessions")
-        assert create_response.status_code == 200
-        session_id = create_response.json()["session_id"]
-
-        message_response = client.post(
-            f"/api/planner/sessions/{session_id}/messages",
-            json={"message": "Summarize my top important emails."},
-        )
-        assert message_response.status_code == 200
-        assert "assistant_message" in message_response.json()
-
-        confirm_response = client.post(f"/api/planner/sessions/{session_id}/confirm")
-        assert confirm_response.status_code == 200
-        confirm_body = confirm_response.json()
-        run_id = confirm_body["run_id"]
-
-        events_response = client.get(f"/api/runs/{run_id}/events")
-        assert events_response.status_code == 200
-        events = events_response.json()["events"]
-        assert len(events) >= 4
-        assert any(event["event_type"] == "llm_content_delta" for event in events)
-        assert any(event["event_type"] == "llm_reasoning_delta" for event in events)
-        assert any(event["event_type"] == "llm_usage_final" for event in events)
-        assert any(event["model"] == "google/gemini-3-pro" for event in events)
-
-        sample_path = Path(confirm_body["sse_sample_path"])
-        assert sample_path.exists()
-        sample_text = sample_path.read_text(encoding="utf-8")
-        assert "event: llm_content_delta" in sample_text
-        assert "event: llm_reasoning_delta" in sample_text
-        assert "event: llm_usage_final" in sample_text
-        assert f'"run_id": "{run_id}"' in sample_text
-
-        monkeypatch.undo()
-
-
-def test_sse_stream_returns_event_source_format() -> None:
-    async def fake_chat_completion_stream(messages, model=None, reasoning=None):  # noqa: ARG001
-        yield {
-            "content_delta": "Urgent legal task detected.",
-            "raw": {"choices": [{"delta": {"content": "Urgent legal"}}]},
-        }
-        yield {
-            "reasoning_details": [
-                {
-                    "type": "reasoning.summary",
-                    "summary": "Compliance deadline outranks optional marketing review.",
-                }
-            ],
-            "raw": {
-                "choices": [
-                    {"delta": {"reasoning_details": [{"type": "reasoning.summary"}]}}
-                ]
-            },
-        }
-        yield {
-            "usage": {"prompt_tokens": 100, "completion_tokens": 50},
-            "raw": {"usage": {"prompt_tokens": 100}},
-        }
-        yield {"done": True}
-
-    from app import swarm_orchestrator
+    from app.routers import planner as planner_mod
     from pytest import MonkeyPatch
 
     with TestClient(app) as client:
-        monkeypatch = MonkeyPatch()
-        monkeypatch.setattr(
-            swarm_orchestrator,
-            "chat_completion_stream",
-            fake_chat_completion_stream,
-        )
+        mp = MonkeyPatch()
+        mp.setattr(swarm_orchestrator, "chat_completion_stream", fake_stream)
+        mp.setattr(planner_mod, "load_models", lambda: _SINGLE_MODEL)
 
         session_id = client.post("/api/planner/sessions").json()["session_id"]
         client.post(
             f"/api/planner/sessions/{session_id}/messages",
-            json={"message": "Give me a concise brief."},
+            json={"message": "Summarize my top important emails."},
         )
-        run_id = client.post(f"/api/planner/sessions/{session_id}/confirm").json()[
-            "run_id"
-        ]
+
+        confirm_body = client.post(f"/api/planner/sessions/{session_id}/confirm").json()
+        run_id = confirm_body["run_id"]
+
+        events_resp = client.get(f"/api/runs/{run_id}/events")
+        assert events_resp.status_code == 200
+        events = events_resp.json()["events"]
+
+        event_types = {e["event_type"] for e in events}
+        assert "run_started" in event_types
+        assert "model_run_started" in event_types
+        assert "narration_delta" in event_types
+        assert "model_run_completed" in event_types
+        assert "run_completed" in event_types
+
+        model_events = [e for e in events if e.get("model_id") == "test/fake-model"]
+        assert len(model_events) >= 5
+
+        output_dir = Path(confirm_body["sse_sample_path"])
+        assert output_dir.exists()
+        summary = output_dir / "summary.json"
+        assert summary.exists()
+
+        mp.undo()
+
+
+def test_events_filter_by_model_id() -> None:
+    async def fake_stream(messages, model=None, reasoning=None):  # noqa: ARG001
+        yield {"content_delta": "Analyzing emails.", "raw": {}}
+        yield {"done": True}
+
+    from app import swarm_orchestrator
+    from app.routers import planner as planner_mod
+    from pytest import MonkeyPatch
+
+    with TestClient(app) as client:
+        mp = MonkeyPatch()
+        mp.setattr(swarm_orchestrator, "chat_completion_stream", fake_stream)
+        mp.setattr(planner_mod, "load_models", lambda: _SINGLE_MODEL)
+
+        session_id = client.post("/api/planner/sessions").json()["session_id"]
+        client.post(
+            f"/api/planner/sessions/{session_id}/messages",
+            json={"message": "test"},
+        )
+        run_id = client.post(f"/api/planner/sessions/{session_id}/confirm").json()["run_id"]
+
+        all_events = client.get(f"/api/runs/{run_id}/events").json()["events"]
+        filtered = client.get(f"/api/runs/{run_id}/events?model_id=test/fake-model").json()["events"]
+
+        assert len(filtered) < len(all_events)
+        assert all(e["model_id"] == "test/fake-model" for e in filtered)
+
+        mp.undo()
+
+
+def test_sse_stream_returns_event_source_format() -> None:
+    async def fake_stream(messages, model=None, reasoning=None):  # noqa: ARG001
+        yield {"content_delta": "Reviewing emails.", "raw": {}}
+        yield {"done": True}
+
+    from app import swarm_orchestrator
+    from app.routers import planner as planner_mod
+    from pytest import MonkeyPatch
+
+    with TestClient(app) as client:
+        mp = MonkeyPatch()
+        mp.setattr(swarm_orchestrator, "chat_completion_stream", fake_stream)
+        mp.setattr(planner_mod, "load_models", lambda: _SINGLE_MODEL)
+
+        session_id = client.post("/api/planner/sessions").json()["session_id"]
+        client.post(
+            f"/api/planner/sessions/{session_id}/messages",
+            json={"message": "test"},
+        )
+        run_id = client.post(f"/api/planner/sessions/{session_id}/confirm").json()["run_id"]
 
         with client.stream("GET", f"/api/runs/{run_id}/stream") as response:
             assert response.status_code == 200
             body = "".join(chunk for chunk in response.iter_text())
 
         assert "event: run_started" in body
-        assert "event: llm_content_delta" in body
-        assert "event: llm_reasoning_delta" in body
-        assert "event: llm_usage_final" in body
+        assert "event: narration_delta" in body
         assert "event: run_completed" in body
         assert "data: {" in body
 
-        monkeypatch.undo()
+        mp.undo()

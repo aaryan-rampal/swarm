@@ -88,6 +88,14 @@ SSE now includes chunk-level model events:
 - `llm_reasoning_delta`
 - `llm_usage_final`
 
+And explicit narrated workflow events:
+
+- `tool_call_started`
+- `narration_started`
+- `narration_delta`
+- `tool_call_result`
+- `narration_completed`
+
 Replay run events (cursor optional):
 
 ```bash
@@ -103,3 +111,5 @@ Sample scenario files live in:
 The latest committed SSE sample output is in:
 
 - `artifacts/sse/sample_output.txt`
+
+Each run now cleans old `.txt` artifacts and rewrites only `sample_output.txt` for a clean snapshot.
