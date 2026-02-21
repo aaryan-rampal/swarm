@@ -31,11 +31,6 @@ class BrainstormFullFlowResponse(BaseModel):
 # --- Planner API ---
 
 
-class PlannerChatRequest(BaseModel):
-    conversation_id: UUID
-    message: str
-
-
 class PlannerSessionCreateResponse(BaseModel):
     session_id: UUID
     status: str
@@ -63,11 +58,6 @@ class PlannerConfirmResponse(BaseModel):
     run_id: UUID
     status: str
     sse_sample_path: str
-
-
-class PlannerChatResponse(BaseModel):
-    assistant_message: str
-    draft_spec: dict | None = None
 
 
 class ValidateSpecRequest(BaseModel):
