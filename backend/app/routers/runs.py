@@ -1,8 +1,12 @@
+from __future__ import annotations
+
+import asyncio
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 
+from app.model_registry import load_models
 from app.schemas import (
     AnalysisChatRequest,
     AnalysisChatResponse,
@@ -18,9 +22,29 @@ from app.schemas import (
     StartRunRequest,
     StartRunResponse,
 )
+from app.swarm_orchestrator import run_swarm
 from app.swarm_runtime import runtime
 
 router = APIRouter()
+
+
+@router.post("/start")
+async def start_swarm_run():
+    """Create a new swarm run, kick it off in the background, and return immediately."""
+    models = load_models()
+    session = runtime.create_session()
+    run = runtime.create_run(session["session_id"])
+    run_id = run["run_id"]
+
+    asyncio.create_task(run_swarm(run_id, models))
+
+    return {
+        "run_id": str(run_id),
+        "models": [
+            {"id": m.id, "name": m.name, "provider": m.provider, "color": m.color}
+            for m in models
+        ],
+    }
 
 
 @router.post("", response_model=StartRunResponse)
@@ -76,17 +100,17 @@ async def get_run_events(
 
 
 @router.get("/{run_id}/stream")
-async def stream_run_events(
-    run_id: UUID,
-    model_id: str | None = Query(default=None),
-) -> StreamingResponse:
+async def stream_run_events(run_id: UUID) -> StreamingResponse:
     if run_id not in runtime.runs:
         raise HTTPException(status_code=404, detail="Run not found")
 
-    events = runtime.get_events(run_id, model_id=model_id)
+    queue: asyncio.Queue = runtime.runs[run_id]["queue"]
 
     async def event_stream():
-        for event in events:
+        while True:
+            event = await queue.get()
+            if event.get("_sentinel"):
+                break
             yield runtime.to_sse_block(event)
 
     return StreamingResponse(
@@ -95,20 +119,9 @@ async def stream_run_events(
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
         },
     )
-
-
-@router.websocket("/{run_id}/stream")
-async def run_stream(websocket: WebSocket, run_id: str) -> None:
-    await websocket.accept()
-    try:
-        await websocket.send_json({"event": "task_started", "task_id": "stub"})
-        await websocket.send_json({"event": "task_completed", "task_id": "stub"})
-    except WebSocketDisconnect:
-        pass
-    finally:
-        await websocket.close()
 
 
 @router.get("/{run_id}/leaderboard", response_model=list[LeaderboardEntry])
