@@ -70,6 +70,7 @@ async def get_available_models():
 
 class StartSwarmRequest(BaseModel):
     model_ids: list[str] | None = None
+    session_id: str | None = None
 
 
 @router.post("/start")
@@ -80,11 +81,19 @@ async def start_swarm_run(payload: StartSwarmRequest | None = None):
     else:
         models = load_models()
 
+    spec: dict | None = None
+    if payload and payload.session_id:
+        try:
+            planner_session = runtime.get_session(UUID(payload.session_id))
+            spec = planner_session.get("draft_spec")
+        except (KeyError, ValueError):
+            pass
+
     session = runtime.create_session()
     run = runtime.create_run(session["session_id"])
     run_id = run["run_id"]
 
-    asyncio.create_task(run_swarm(run_id, models))
+    asyncio.create_task(run_swarm(run_id, models, spec=spec))
 
     return {
         "run_id": str(run_id),
