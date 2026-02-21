@@ -1,165 +1,23 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, ArrowRight, Eye } from "lucide-react";
+import { X, ArrowRight, Eye, Loader2 } from "lucide-react";
 
 interface ModelConfig {
   id: string;
   name: string;
   provider: string;
   color: string;
-  speed: number; // ms to complete (simulated)
-  streamContent: string;
 }
 
-const MODELS: ModelConfig[] = [
-  {
-    id: "gpt-codex",
-    name: "GPT-Codex",
-    provider: "OpenAI",
-    color: "#10b981",
-    speed: 14000,
-    streamContent: `## Email Triage Report
-
-After analyzing 47 emails in your inbox, I've identified the top 3 most important ones:
-
-### 1. Critical: Q4 Revenue Review - Action Required
-**From**: Sarah Chen (VP of Sales)
-**Subject**: Q4 Revenue Review Meeting - Prep Materials Needed by EOD
-
-**Why important**: Direct request from VP requiring immediate action with end-of-day deadline.
-
-**Action items**:
-- Prepare Q4 revenue summary slides
-- Include YoY comparison data
-- Send to Sarah by 5:00 PM EST
-
-### 2. High: Production Incident - Database Latency
-**From**: DevOps Alert System
-**Subject**: [P1] Production database latency spike detected
-
-**Why important**: Production system issue affecting customer-facing services.
-
-**Action items**:
-- Review latency metrics dashboard
-- Coordinate with backend team
-- Prepare incident response if needed
-
-### 3. Medium: New Client Onboarding
-**From**: Michael Torres (Account Manager)
-**Subject**: Acme Corp onboarding kickoff - Your input needed
-
-**Why important**: New enterprise client worth $2.4M ARR.
-
-**Action items**:
-- Review technical requirements doc
-- Provide feasibility assessment
-- Join kickoff call Thursday 2PM`,
-  },
-  {
-    id: "claude-opus",
-    name: "Claude Opus",
-    provider: "Anthropic",
-    color: "#f97316",
-    speed: 16000,
-    streamContent: `I've carefully reviewed all 47 emails in your inbox. Here are the 3 that demand your attention most urgently:
-
-**1. Q4 Revenue Review - Prep Materials (CRITICAL)**
-
-Sarah Chen, your VP of Sales, needs revenue summary slides by end of day. This is a direct ask from leadership with a hard deadline — I'd prioritize this first.
-
-Key actions:
-• Pull Q4 revenue numbers and create comparison slides
-• Include year-over-year trends
-• Email to Sarah before 5 PM EST
-
-**2. Production Database Alert (HIGH)**
-
-Your monitoring system flagged a P1 latency spike in production. While this might resolve on its own, the customer impact makes it worth investigating now.
-
-Key actions:
-• Check the latency dashboard immediately
-• Loop in the backend team if numbers are still elevated
-• Document any findings for the incident log
-
-**3. Acme Corp Onboarding (MEDIUM)**
-
-Michael Torres needs your technical input for a new $2.4M enterprise client. Not urgent today, but responding within 24 hours shows the account team you're engaged.
-
-Key actions:
-• Skim the technical requirements (10 min read)
-• Flag any blockers or concerns
-• Confirm your attendance at Thursday's kickoff
-
-Everything else in your inbox is either FYI-only or can wait until next week.`,
-  },
-  {
-    id: "gemini-3-pro",
-    name: "Gemini 3 Pro",
-    provider: "Google",
-    color: "#3b82f6",
-    speed: 11000,
-    streamContent: `# Email Priority Analysis
-
-## Summary
-Scanned 47 emails. Identified 3 requiring immediate attention.
-
-## Priority Emails
-
-### [P0] Q4 Revenue Review
-- **Sender**: Sarah Chen, VP Sales
-- **Deadline**: Today EOD
-- **Type**: Action Required
-- **Impact**: High — executive visibility
-- **Tasks**: Prepare revenue slides with YoY data, submit by 5 PM
-
-### [P1] Production Latency Alert
-- **Sender**: DevOps Monitoring
-- **Severity**: P1
-- **Type**: Incident
-- **Impact**: High — customer-facing degradation
-- **Tasks**: Check metrics, coordinate response, escalate if needed
-
-### [P2] Enterprise Client Onboarding
-- **Sender**: Michael Torres, Account Mgmt
-- **Type**: Collaboration Request
-- **Impact**: Medium — $2.4M ARR opportunity
-- **Tasks**: Review requirements, provide technical assessment, RSVP for Thursday
-
-## Classification Stats
-- Critical: 1 | High: 1 | Medium: 1
-- Remaining: 12 informational, 8 newsletters, 22 low-priority`,
-  },
-  {
-    id: "kimi-25",
-    name: "Kimi 2.5",
-    provider: "Moonshot",
-    color: "#a855f7",
-    speed: 9000,
-    streamContent: `Here are your top 3 important emails:
-
-**1. Q4 Revenue Review (URGENT)**
-From: Sarah Chen (VP Sales)
-→ She needs revenue slides by end of day
-→ Include Q4 numbers + year-over-year comparison
-→ Priority: CRITICAL
-
-**2. Production Alert - DB Latency**
-From: DevOps System
-→ P1 latency spike in production database
-→ May affect customer experience
-→ Check dashboard and coordinate with team
-→ Priority: HIGH
-
-**3. Acme Corp Onboarding**
-From: Michael Torres (Account Manager)
-→ New $2.4M client needs technical review
-→ Kickoff meeting Thursday at 2 PM
-→ Priority: MEDIUM
-
-Summary: 3 actionable / 44 can wait`,
-  },
-];
+interface ModelState {
+  config: ModelConfig;
+  status: "pending" | "running" | "completed" | "error";
+  streamContent: string;
+  completedReps: number;
+  totalReps: number;
+  activeRep: boolean;
+}
 
 function SwarmParticles({
   color,
@@ -254,20 +112,20 @@ function ProgressRing({
 
 function StreamingModal({
   model,
-  onClose,
   progress,
+  onClose,
 }: {
-  model: ModelConfig;
-  onClose: () => void;
+  model: ModelState;
   progress: number;
+  onClose: () => void;
 }) {
-  const [displayedChars, setDisplayedChars] = useState(0);
+  const contentRef = useRef<HTMLPreElement>(null);
 
   useEffect(() => {
-    const totalChars = model.streamContent.length;
-    const visibleChars = Math.floor((progress / 100) * totalChars);
-    setDisplayedChars(visibleChars);
-  }, [progress, model.streamContent.length]);
+    if (contentRef.current) {
+      contentRef.current.scrollTop = contentRef.current.scrollHeight;
+    }
+  }, [model.streamContent]);
 
   return (
     <motion.div
@@ -288,10 +146,10 @@ function StreamingModal({
           <div className="flex items-center gap-3">
             <div
               className="w-3 h-3 rounded-full"
-              style={{ background: model.color, boxShadow: `0 0 8px ${model.color}` }}
+              style={{ background: model.config.color, boxShadow: `0 0 8px ${model.config.color}` }}
             />
-            <span className="font-semibold text-arena-text">{model.name}</span>
-            <span className="text-xs text-arena-muted">{model.provider}</span>
+            <span className="font-semibold text-arena-text">{model.config.name}</span>
+            <span className="text-xs text-arena-muted">{model.config.provider}</span>
           </div>
           <div className="flex items-center gap-3">
             <span className="text-xs font-mono text-arena-muted">
@@ -302,14 +160,17 @@ function StreamingModal({
             </button>
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-5">
-          <pre className="font-mono text-sm text-arena-text/80 whitespace-pre-wrap leading-relaxed">
-            {model.streamContent.slice(0, displayedChars)}
-            {progress < 100 && (
-              <span className="inline-block w-2 h-4 bg-arena-accent/80 animate-pulse ml-0.5 align-middle" />
-            )}
-          </pre>
-        </div>
+        <pre
+          ref={contentRef}
+          className="flex-1 overflow-y-auto p-5 font-mono text-sm text-arena-text/80 whitespace-pre-wrap leading-relaxed"
+        >
+          {model.streamContent || (
+            <span className="text-arena-muted italic">Waiting for output...</span>
+          )}
+          {model.status !== "completed" && model.status !== "error" && (
+            <span className="inline-block w-2 h-4 bg-arena-accent/80 animate-pulse ml-0.5 align-middle" />
+          )}
+        </pre>
       </motion.div>
     </motion.div>
   );
@@ -317,38 +178,192 @@ function StreamingModal({
 
 export default function SwarmPage() {
   const navigate = useNavigate();
-  const [progresses, setProgresses] = useState<Record<string, number>>({});
-  const [selectedModel, setSelectedModel] = useState<ModelConfig | null>(null);
+  const [modelStates, setModelStates] = useState<Record<string, ModelState>>({});
+  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [allDone, setAllDone] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
+
+  const models = useMemo(
+    () => Object.values(modelStates).map((s) => s.config),
+    [modelStates],
+  );
 
   useEffect(() => {
-    const initial: Record<string, number> = {};
-    MODELS.forEach((m) => (initial[m.id] = 0));
-    setProgresses(initial);
+    let cancelled = false;
 
-    const intervals = MODELS.map((model) => {
-      const tickMs = 100;
-      const increment = (tickMs / model.speed) * 100;
-      return setInterval(() => {
-        setProgresses((prev) => {
-          const current = prev[model.id] ?? 0;
-          if (current >= 100) return prev;
-          return { ...prev, [model.id]: Math.min(100, current + increment + Math.random() * 0.3) };
+    async function startSwarm() {
+      try {
+        const res = await fetch("/api/runs/start", { method: "POST" });
+        if (!res.ok) throw new Error(`Start failed: ${res.status}`);
+        const data = await res.json();
+        const runId: string = data.run_id;
+        const modelsFromApi: ModelConfig[] = data.models;
+
+        if (cancelled) return;
+
+        const initial: Record<string, ModelState> = {};
+        for (const m of modelsFromApi) {
+          initial[m.id] = {
+            config: m,
+            status: "pending",
+            streamContent: "",
+            completedReps: 0,
+            totalReps: 5,
+            activeRep: false,
+          };
+        }
+        setModelStates(initial);
+        setLoading(false);
+
+        const es = new EventSource(`/api/runs/${runId}/stream`);
+        eventSourceRef.current = es;
+
+        es.addEventListener("model_run_started", (e) => {
+          const payload = JSON.parse(e.data);
+          const modelId: string = payload.model_id;
+          setModelStates((prev) => {
+            const ms = prev[modelId];
+            if (!ms) return prev;
+            return { ...prev, [modelId]: { ...ms, status: "running", activeRep: true } };
+          });
         });
-      }, tickMs);
-    });
 
-    return () => intervals.forEach(clearInterval);
+        es.addEventListener("narration_delta", (e) => {
+          const payload = JSON.parse(e.data);
+          const modelId: string = payload.model_id;
+          const repIndex: number = payload.rep_index;
+          if (repIndex !== 0) return;
+          const delta: string = payload.content_delta || payload.content || "";
+          setModelStates((prev) => {
+            const ms = prev[modelId];
+            if (!ms) return prev;
+            return { ...prev, [modelId]: { ...ms, streamContent: ms.streamContent + delta } };
+          });
+        });
+
+        es.addEventListener("model_run_completed", (e) => {
+          const payload = JSON.parse(e.data);
+          const modelId: string = payload.model_id;
+          setModelStates((prev) => {
+            const ms = prev[modelId];
+            if (!ms) return prev;
+            const completedReps = ms.completedReps + 1;
+            const done = completedReps >= ms.totalReps;
+            return {
+              ...prev,
+              [modelId]: {
+                ...ms,
+                completedReps,
+                activeRep: !done,
+                status: done ? "completed" : ms.status,
+              },
+            };
+          });
+        });
+
+        es.addEventListener("model_run_error", (e) => {
+          const payload = JSON.parse(e.data);
+          const modelId: string = payload.model_id;
+          setModelStates((prev) => {
+            const ms = prev[modelId];
+            if (!ms) return prev;
+            const completedReps = ms.completedReps + 1;
+            const done = completedReps >= ms.totalReps;
+            return {
+              ...prev,
+              [modelId]: {
+                ...ms,
+                completedReps,
+                activeRep: !done,
+                status: done ? "error" : ms.status,
+              },
+            };
+          });
+        });
+
+        es.addEventListener("run_completed", () => {
+          setAllDone(true);
+          es.close();
+        });
+
+        es.onerror = () => {
+          setAllDone(true);
+          es.close();
+        };
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to start swarm");
+          setLoading(false);
+        }
+      }
+    }
+
+    startSwarm();
+
+    return () => {
+      cancelled = true;
+      eventSourceRef.current?.close();
+    };
   }, []);
 
-  useEffect(() => {
-    const done = MODELS.every((m) => (progresses[m.id] ?? 0) >= 100);
-    if (done && !allDone) setAllDone(true);
-  }, [progresses, allDone]);
+  const getProgress = useCallback(
+    (ms: ModelState): number => {
+      const base = (ms.completedReps / ms.totalReps) * 100;
+      if (ms.activeRep && ms.status === "running") {
+        return Math.min(99, base + (1 / ms.totalReps) * 50);
+      }
+      return base;
+    },
+    [],
+  );
 
-  const handleModelClick = useCallback((model: ModelConfig) => {
-    setSelectedModel(model);
+  const overallProgress = useMemo(() => {
+    const vals = Object.values(modelStates);
+    if (vals.length === 0) return 0;
+    return vals.reduce((sum, ms) => sum + getProgress(ms), 0) / (vals.length * 100) * 100;
+  }, [modelStates, getProgress]);
+
+  const completedCount = useMemo(
+    () => Object.values(modelStates).filter((ms) => ms.status === "completed" || ms.status === "error").length,
+    [modelStates],
+  );
+
+  const totalEvals = useMemo(() => {
+    const vals = Object.values(modelStates);
+    if (vals.length === 0) return 0;
+    return vals.length * (vals[0]?.totalReps ?? 5);
+  }, [modelStates]);
+
+  const handleModelClick = useCallback((modelId: string) => {
+    setSelectedModelId(modelId);
   }, []);
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-4 text-arena-muted">
+        <Loader2 className="w-8 h-8 animate-spin" />
+        <span className="text-sm">Starting swarm...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-4">
+        <p className="text-red-400 text-sm">{error}</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="px-4 py-2 rounded-lg bg-arena-surface border border-arena-border text-arena-text text-sm hover:bg-arena-card transition-colors cursor-pointer"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  const selectedModel = selectedModelId ? modelStates[selectedModelId] : null;
 
   return (
     <div className="flex flex-col h-full">
@@ -356,11 +371,10 @@ export default function SwarmPage() {
       <div className="px-6 py-3 border-b border-arena-border/50 bg-arena-surface/40 shrink-0">
         <div className="flex items-center justify-between text-xs text-arena-muted">
           <span>
-            {MODELS.filter((m) => (progresses[m.id] ?? 0) >= 100).length}/
-            {MODELS.length} models complete
+            {completedCount}/{models.length} models complete
           </span>
           <div className="flex items-center gap-4">
-            <span>400 total evaluations</span>
+            <span>{totalEvals} total evaluations</span>
             {allDone && (
               <motion.button
                 initial={{ opacity: 0, x: 10 }}
@@ -377,9 +391,7 @@ export default function SwarmPage() {
         <div className="mt-2 h-1 rounded-full bg-arena-border overflow-hidden">
           <motion.div
             className="h-full rounded-full bg-gradient-to-r from-arena-accent to-arena-blue"
-            style={{
-              width: `${(MODELS.reduce((sum, m) => sum + (progresses[m.id] ?? 0), 0) / (MODELS.length * 100)) * 100}%`,
-            }}
+            style={{ width: `${overallProgress}%` }}
             transition={{ duration: 0.3 }}
           />
         </div>
@@ -388,34 +400,34 @@ export default function SwarmPage() {
       {/* Model Grid */}
       <div className="flex-1 p-6 overflow-y-auto">
         <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
-          {MODELS.map((model, i) => {
-            const progress = progresses[model.id] ?? 0;
-            const isDone = progress >= 100;
+          {Object.values(modelStates).map((ms, i) => {
+            const progress = getProgress(ms);
+            const isDone = ms.status === "completed" || ms.status === "error";
 
             return (
               <motion.div
-                key={model.id}
+                key={ms.config.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.1 }}
-                onClick={() => handleModelClick(model)}
+                onClick={() => handleModelClick(ms.config.id)}
                 className="relative rounded-2xl bg-arena-card border border-arena-border overflow-hidden cursor-pointer hover:border-arena-border group"
                 style={{
-                  borderColor: isDone ? `${model.color}33` : undefined,
+                  borderColor: isDone ? `${ms.config.color}33` : undefined,
                 }}
               >
                 {/* Swarm area */}
                 <div className="relative h-52 flex items-center justify-center">
                   <SwarmParticles
-                    color={model.color}
+                    color={ms.config.color}
                     isActive={!isDone}
                     progress={progress}
                   />
-                  <ProgressRing progress={progress} color={model.color} size={110} />
+                  <ProgressRing progress={progress} color={ms.config.color} size={110} />
                   <div className="relative z-10 text-center">
                     <div
                       className="text-3xl font-bold font-mono"
-                      style={{ color: model.color }}
+                      style={{ color: ms.config.color }}
                     >
                       {Math.round(progress)}%
                     </div>
@@ -424,9 +436,9 @@ export default function SwarmPage() {
                         initial={{ scale: 0 }}
                         animate={{ scale: 1 }}
                         className="mt-1 text-xs font-medium"
-                        style={{ color: model.color }}
+                        style={{ color: ms.config.color }}
                       >
-                        Complete
+                        {ms.status === "completed" ? "Complete" : "Error"}
                       </motion.div>
                     )}
                   </div>
@@ -440,16 +452,16 @@ export default function SwarmPage() {
                         <div
                           className="w-2.5 h-2.5 rounded-full"
                           style={{
-                            background: model.color,
-                            boxShadow: `0 0 6px ${model.color}`,
+                            background: ms.config.color,
+                            boxShadow: `0 0 6px ${ms.config.color}`,
                           }}
                         />
                         <span className="font-semibold text-arena-text text-sm">
-                          {model.name}
+                          {ms.config.name}
                         </span>
                       </div>
                       <span className="text-xs text-arena-muted mt-0.5 block ml-4.5">
-                        {model.provider}
+                        {ms.config.provider}
                       </span>
                     </div>
                     <div className="flex items-center gap-1.5 text-xs text-arena-muted opacity-0 group-hover:opacity-100 transition-opacity">
@@ -469,8 +481,8 @@ export default function SwarmPage() {
         {selectedModel && (
           <StreamingModal
             model={selectedModel}
-            progress={progresses[selectedModel.id] ?? 0}
-            onClose={() => setSelectedModel(null)}
+            progress={getProgress(selectedModel)}
+            onClose={() => setSelectedModelId(null)}
           />
         )}
       </AnimatePresence>
