@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   RadarChart,
@@ -19,16 +18,14 @@ import {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { prism } from "react-syntax-highlighter/dist/esm/styles/prism";
 import {
-  Zap,
   Copy,
   Check,
   Trophy,
   Bolt,
   DollarSign,
   Target,
-  RotateCcw,
 } from "lucide-react";
 
 const MODELS = [
@@ -192,7 +189,7 @@ function CustomTooltip({
   if (!active || !payload) return null;
   return (
     <div className="bg-arena-card border border-arena-border rounded-lg px-3 py-2 shadow-xl">
-      <p className="text-xs font-medium text-white mb-1">{label}</p>
+      <p className="text-xs font-medium text-arena-text mb-1">{label}</p>
       {payload.map((entry, i) => (
         <p key={i} className="text-xs" style={{ color: entry.color }}>
           {entry.name}: {entry.value}
@@ -203,7 +200,6 @@ function CustomTooltip({
 }
 
 export default function ResultsPage() {
-  const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -215,27 +211,8 @@ export default function ResultsPage() {
   const bestModel = MODELS[1]; // Claude Opus
 
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* Header */}
-      <header className="flex items-center justify-between px-6 py-4 border-b border-arena-border bg-arena-surface/80 backdrop-blur-sm sticky top-0 z-30">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-arena-accent to-arena-blue flex items-center justify-center">
-            <Zap className="w-4 h-4 text-white" />
-          </div>
-          <h1 className="text-lg font-semibold text-white tracking-tight">
-            Swarm
-          </h1>
-        </div>
-        <button
-          onClick={() => navigate("/")}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl border border-arena-border text-sm text-arena-muted hover:text-white hover:border-arena-accent/50 transition-colors cursor-pointer"
-        >
-          <RotateCcw className="w-3.5 h-3.5" />
-          New Evaluation
-        </button>
-      </header>
-
-      <div className="flex-1 overflow-y-auto">
+    <div className="h-full flex flex-col overflow-y-auto">
+      <div className="flex-1">
         <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
           {/* Winner Card */}
           <motion.div
@@ -251,7 +228,7 @@ export default function ResultsPage() {
                     <Trophy className="w-4 h-4 text-yellow-500" />
                     Best Model
                   </div>
-                  <h2 className="text-3xl font-bold text-white mb-1">
+                  <h2 className="text-3xl font-bold text-arena-text mb-1">
                     {bestModel.name}
                   </h2>
                   <p className="text-arena-muted text-sm">{bestModel.provider}</p>
@@ -281,7 +258,7 @@ export default function ResultsPage() {
                       <item.icon className="w-3 h-3" />
                       {item.label}
                     </div>
-                    <div className="text-sm font-semibold text-white">
+                    <div className="text-sm font-semibold text-arena-text">
                       {item.value}
                     </div>
                     <div className="text-xs mt-0.5" style={{ color: item.color }}>
@@ -302,12 +279,12 @@ export default function ResultsPage() {
               transition={{ delay: 0.1 }}
               className="rounded-2xl bg-arena-card border border-arena-border p-6"
             >
-              <h3 className="text-sm font-semibold text-white mb-4">
+              <h3 className="text-sm font-semibold text-arena-text mb-4">
                 Multi-Dimensional Comparison
               </h3>
               <ResponsiveContainer width="100%" height={320}>
                 <RadarChart data={radarData}>
-                  <PolarGrid stroke="#1e1e32" />
+                  <PolarGrid stroke="#e2e8f0" />
                   <PolarAngleAxis
                     dataKey="metric"
                     tick={{ fill: "#64748b", fontSize: 11 }}
@@ -344,21 +321,21 @@ export default function ResultsPage() {
               transition={{ delay: 0.2 }}
               className="rounded-2xl bg-arena-card border border-arena-border p-6"
             >
-              <h3 className="text-sm font-semibold text-white mb-4">
+              <h3 className="text-sm font-semibold text-arena-text mb-4">
                 Score Breakdown
               </h3>
               <ResponsiveContainer width="100%" height={320}>
                 <BarChart data={barData} barCategoryGap="20%">
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1e1e32" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                   <XAxis
                     dataKey="name"
                     tick={{ fill: "#64748b", fontSize: 11 }}
-                    axisLine={{ stroke: "#1e1e32" }}
+                    axisLine={{ stroke: "#e2e8f0" }}
                   />
                   <YAxis
                     domain={[0, 5]}
                     tick={{ fill: "#64748b", fontSize: 11 }}
-                    axisLine={{ stroke: "#1e1e32" }}
+                    axisLine={{ stroke: "#e2e8f0" }}
                   />
                   <Tooltip content={<CustomTooltip />} />
                   <Legend wrapperStyle={{ fontSize: 11 }} />
@@ -378,7 +355,7 @@ export default function ResultsPage() {
             className="rounded-2xl bg-arena-card border border-arena-border overflow-hidden"
           >
             <div className="px-6 py-4 border-b border-arena-border">
-              <h3 className="text-sm font-semibold text-white">
+              <h3 className="text-sm font-semibold text-arena-text">
                 Detailed Metrics
               </h3>
             </div>
@@ -433,7 +410,7 @@ export default function ResultsPage() {
                                 boxShadow: `0 0 6px ${m.color}`,
                               }}
                             />
-                            <span className="font-medium text-white">
+                            <span className="font-medium text-arena-text">
                               {m.name}
                             </span>
                             {isWinner && (
@@ -479,7 +456,7 @@ export default function ResultsPage() {
           >
             <div className="flex items-center justify-between px-6 py-4 border-b border-arena-border">
               <div>
-                <h3 className="text-sm font-semibold text-white">
+                <h3 className="text-sm font-semibold text-arena-text">
                   Full Report
                 </h3>
                 <p className="text-xs text-arena-muted mt-0.5">
@@ -507,7 +484,7 @@ export default function ResultsPage() {
                 )}
               </button>
             </div>
-            <div className="px-6 py-6 prose prose-invert prose-sm max-w-none [&_table]:w-full [&_th]:text-left [&_th]:p-2 [&_th]:border-b [&_th]:border-arena-border [&_td]:p-2 [&_td]:border-b [&_td]:border-arena-border/50 [&_h1]:text-xl [&_h1]:font-bold [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:text-white [&_h3]:text-base [&_h3]:text-white/90 [&_strong]:text-white [&_p]:text-arena-text/80 [&_li]:text-arena-text/80 [&_a]:text-arena-blue [&_hr]:border-arena-border [&_em]:text-arena-muted">
+            <div className="px-8 py-8 prose prose-base max-w-none [&>*+*]:mt-6 [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-arena-text [&_h1]:mt-10 [&_h1]:mb-6 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:text-arena-text [&_h2]:mt-10 [&_h2]:mb-4 [&_h2]:pb-2 [&_h2]:border-b [&_h2]:border-arena-border [&_h3]:text-base [&_h3]:font-medium [&_h3]:text-arena-text/90 [&_h3]:mt-6 [&_h3]:mb-3 [&_p]:text-arena-text/75 [&_p]:leading-7 [&_p]:my-4 [&_li]:text-arena-text/75 [&_li]:leading-7 [&_li]:my-1 [&_ul]:my-4 [&_ul]:space-y-1 [&_ol]:my-4 [&_strong]:text-arena-text [&_strong]:font-semibold [&_a]:text-arena-blue [&_a]:underline [&_a]:underline-offset-2 [&_hr]:border-arena-border [&_hr]:my-8 [&_em]:text-arena-muted [&_table]:w-full [&_table]:my-6 [&_table]:text-sm [&_th]:text-left [&_th]:px-4 [&_th]:py-3 [&_th]:border-b-2 [&_th]:border-arena-border [&_th]:text-arena-text [&_th]:font-medium [&_td]:px-4 [&_td]:py-3 [&_td]:border-b [&_td]:border-arena-border/40 [&_td]:text-arena-text/75 [&_blockquote]:border-l-2 [&_blockquote]:border-arena-accent/30 [&_blockquote]:pl-4 [&_blockquote]:text-arena-muted [&_blockquote]:italic">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{
@@ -516,21 +493,24 @@ export default function ResultsPage() {
                     const inline = !match;
                     return inline ? (
                       <code
-                        className="bg-arena-bg/80 text-arena-accent px-1.5 py-0.5 rounded text-xs font-mono"
+                        className="bg-arena-card text-arena-accent px-1.5 py-0.5 rounded text-[13px] font-mono"
                         {...props}
                       >
                         {children}
                       </code>
                     ) : (
                       <SyntaxHighlighter
-                        style={oneDark}
+                        style={prism}
                         language={match[1]}
                         PreTag="div"
                         customStyle={{
-                          background: "#0a0a12",
+                          background: "#f5f4f0",
                           borderRadius: "0.75rem",
-                          border: "1px solid #1e1e32",
-                          fontSize: "0.8rem",
+                          border: "1px solid #e8e6e1",
+                          fontSize: "0.82rem",
+                          padding: "1.25rem 1.5rem",
+                          lineHeight: "1.7",
+                          margin: "1.5rem 0",
                         }}
                       >
                         {String(children).replace(/\n$/, "")}

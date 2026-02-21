@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Zap, X, ArrowRight, Eye } from "lucide-react";
+import { X, ArrowRight, Eye } from "lucide-react";
 
 interface ModelConfig {
   id: string;
@@ -274,7 +274,7 @@ function StreamingModal({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
       onClick={onClose}
     >
       <motion.div
@@ -290,14 +290,14 @@ function StreamingModal({
               className="w-3 h-3 rounded-full"
               style={{ background: model.color, boxShadow: `0 0 8px ${model.color}` }}
             />
-            <span className="font-semibold text-white">{model.name}</span>
+            <span className="font-semibold text-arena-text">{model.name}</span>
             <span className="text-xs text-arena-muted">{model.provider}</span>
           </div>
           <div className="flex items-center gap-3">
             <span className="text-xs font-mono text-arena-muted">
               {Math.round(progress)}%
             </span>
-            <button onClick={onClose} className="text-arena-muted hover:text-white transition-colors cursor-pointer">
+            <button onClick={onClose} className="text-arena-muted hover:text-arena-text transition-colors cursor-pointer">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -351,48 +351,28 @@ export default function SwarmPage() {
   }, []);
 
   return (
-    <div className="flex flex-col h-screen">
-      {/* Header */}
-      <header className="flex items-center justify-between px-6 py-4 border-b border-arena-border bg-arena-surface/80 backdrop-blur-sm">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-arena-accent to-arena-blue flex items-center justify-center">
-            <Zap className="w-4 h-4 text-white" />
-          </div>
-          <h1 className="text-lg font-semibold text-white tracking-tight">
-            Swarm
-          </h1>
-        </div>
-        <div className="flex items-center gap-4">
-          {!allDone && (
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-arena-green animate-pulse" />
-              <span className="text-sm text-arena-muted">
-                Running evaluations...
-              </span>
-            </div>
-          )}
-          {allDone && (
-            <motion.button
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              onClick={() => navigate("/results")}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-arena-accent to-arena-blue text-white text-sm font-semibold hover:opacity-90 transition-opacity cursor-pointer"
-            >
-              View Results
-              <ArrowRight className="w-4 h-4" />
-            </motion.button>
-          )}
-        </div>
-      </header>
-
+    <div className="flex flex-col h-full">
       {/* Status bar */}
-      <div className="px-6 py-3 border-b border-arena-border/50 bg-arena-surface/40">
+      <div className="px-6 py-3 border-b border-arena-border/50 bg-arena-surface/40 shrink-0">
         <div className="flex items-center justify-between text-xs text-arena-muted">
           <span>
             {MODELS.filter((m) => (progresses[m.id] ?? 0) >= 100).length}/
             {MODELS.length} models complete
           </span>
-          <span>400 total evaluations</span>
+          <div className="flex items-center gap-4">
+            <span>400 total evaluations</span>
+            {allDone && (
+              <motion.button
+                initial={{ opacity: 0, x: 10 }}
+                animate={{ opacity: 1, x: 0 }}
+                onClick={() => navigate("/results")}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-arena-text text-white text-sm font-medium hover:bg-arena-text/90 transition-colors cursor-pointer"
+              >
+                View Results
+                <ArrowRight className="w-4 h-4" />
+              </motion.button>
+            )}
+          </div>
         </div>
         <div className="mt-2 h-1 rounded-full bg-arena-border overflow-hidden">
           <motion.div
@@ -464,7 +444,7 @@ export default function SwarmPage() {
                             boxShadow: `0 0 6px ${model.color}`,
                           }}
                         />
-                        <span className="font-semibold text-white text-sm">
+                        <span className="font-semibold text-arena-text text-sm">
                           {model.name}
                         </span>
                       </div>
