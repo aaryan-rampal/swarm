@@ -6,7 +6,14 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
-from app.model_registry import load_models
+from pydantic import BaseModel
+
+from app.model_registry import (
+    DEFAULT_MODEL_IDS,
+    load_available_models,
+    load_models,
+    models_from_ids,
+)
 from app.schemas import (
     AnalysisChatRequest,
     AnalysisChatResponse,
@@ -28,10 +35,32 @@ from app.swarm_runtime import runtime
 router = APIRouter()
 
 
+def _spec_to_dict(m):
+    return {"id": m.id, "name": m.name, "provider": m.provider, "color": m.color}
+
+
+@router.get("/available-models")
+async def get_available_models():
+    """Return every model from available_models.txt plus the default selection."""
+    all_models = load_available_models()
+    return {
+        "models": [_spec_to_dict(m) for m in all_models],
+        "default_ids": DEFAULT_MODEL_IDS,
+    }
+
+
+class StartSwarmRequest(BaseModel):
+    model_ids: list[str] | None = None
+
+
 @router.post("/start")
-async def start_swarm_run():
+async def start_swarm_run(payload: StartSwarmRequest | None = None):
     """Create a new swarm run, kick it off in the background, and return immediately."""
-    models = load_models()
+    if payload and payload.model_ids:
+        models = models_from_ids(payload.model_ids)
+    else:
+        models = load_models()
+
     session = runtime.create_session()
     run = runtime.create_run(session["session_id"])
     run_id = run["run_id"]
@@ -40,10 +69,7 @@ async def start_swarm_run():
 
     return {
         "run_id": str(run_id),
-        "models": [
-            {"id": m.id, "name": m.name, "provider": m.provider, "color": m.color}
-            for m in models
-        ],
+        "models": [_spec_to_dict(m) for m in models],
     }
 
 
