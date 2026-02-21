@@ -484,7 +484,7 @@ export default function ResultsPage() {
                 )}
               </button>
             </div>
-            <div className="px-6 py-6 prose prose-sm max-w-none [&_table]:w-full [&_th]:text-left [&_th]:p-2 [&_th]:border-b [&_th]:border-arena-border [&_td]:p-2 [&_td]:border-b [&_td]:border-arena-border/50 [&_h1]:text-xl [&_h1]:font-bold [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:text-arena-text [&_h3]:text-base [&_h3]:text-arena-text/90 [&_strong]:text-arena-text [&_p]:text-arena-text/80 [&_li]:text-arena-text/80 [&_a]:text-arena-blue [&_hr]:border-arena-border [&_em]:text-arena-muted">
+            <div className="px-8 py-8 prose prose-base max-w-none [&>*+*]:mt-6 [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:text-arena-text [&_h1]:mt-10 [&_h1]:mb-6 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:text-arena-text [&_h2]:mt-10 [&_h2]:mb-4 [&_h2]:pb-2 [&_h2]:border-b [&_h2]:border-arena-border [&_h3]:text-base [&_h3]:font-medium [&_h3]:text-arena-text/90 [&_h3]:mt-6 [&_h3]:mb-3 [&_p]:text-arena-text/75 [&_p]:leading-7 [&_p]:my-4 [&_li]:text-arena-text/75 [&_li]:leading-7 [&_li]:my-1 [&_ul]:my-4 [&_ul]:space-y-1 [&_ol]:my-4 [&_strong]:text-arena-text [&_strong]:font-semibold [&_a]:text-arena-blue [&_a]:underline [&_a]:underline-offset-2 [&_hr]:border-arena-border [&_hr]:my-8 [&_em]:text-arena-muted [&_table]:w-full [&_table]:my-6 [&_table]:text-sm [&_th]:text-left [&_th]:px-4 [&_th]:py-3 [&_th]:border-b-2 [&_th]:border-arena-border [&_th]:text-arena-text [&_th]:font-medium [&_td]:px-4 [&_td]:py-3 [&_td]:border-b [&_td]:border-arena-border/40 [&_td]:text-arena-text/75 [&_blockquote]:border-l-2 [&_blockquote]:border-arena-accent/30 [&_blockquote]:pl-4 [&_blockquote]:text-arena-muted [&_blockquote]:italic">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{
@@ -493,7 +493,7 @@ export default function ResultsPage() {
                     const inline = !match;
                     return inline ? (
                       <code
-                        className="bg-arena-bg/80 text-arena-accent px-1.5 py-0.5 rounded text-xs font-mono"
+                        className="bg-arena-card text-arena-accent px-1.5 py-0.5 rounded text-[13px] font-mono"
                         {...props}
                       >
                         {children}
@@ -504,10 +504,13 @@ export default function ResultsPage() {
                         language={match[1]}
                         PreTag="div"
                         customStyle={{
-                          background: "#f8fafc",
+                          background: "#f5f4f0",
                           borderRadius: "0.75rem",
-                          border: "1px solid #e2e8f0",
-                          fontSize: "0.8rem",
+                          border: "1px solid #e8e6e1",
+                          fontSize: "0.82rem",
+                          padding: "1.25rem 1.5rem",
+                          lineHeight: "1.7",
+                          margin: "1.5rem 0",
                         }}
                       >
                         {String(children).replace(/\n$/, "")}
