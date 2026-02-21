@@ -12,7 +12,7 @@ interface Message {
 }
 
 const WELCOME_MSG =
-  "Hey! I'm **PromptArena** — your AI prompt benchmarking assistant.\n\nDescribe the agent or task you want to build, and I'll test it across multiple models to find the best one for you.\n\nWhat would you like to build?";
+  "Hey! I'm **Swarm** — your AI prompt benchmarking assistant.\n\nDescribe the agent or task you want to build, and I'll test it across multiple models to find the best one for you.\n\nWhat would you like to build?";
 
 const CLARIFYING_MSG = `That's an excellent use case! To design the best evaluation, I need a few details:
 
@@ -22,35 +22,27 @@ const CLARIFYING_MSG = `That's an excellent use case! To design the best evaluat
 
 This helps me create better synthetic test data and evaluation criteria.`;
 
-const PLAN_MSG = `## Evaluation Plan
+const PROMPT_MSG = `Here's the exact prompt that will be sent to each model:
 
-**Task**: Build and benchmark an AI agent based on your description
+\`\`\`
+You are an expert email triage assistant. Given a set of emails, identify the top 3 most important ones and provide a concise bullet-point summary for each.
 
-### Synthetic Data
-- **20 test cases** covering realistic scenarios and edge cases
-- Mix of straightforward, ambiguous, and adversarial inputs
-- Various complexity levels (simple, medium, complex)
+Importance Criteria:
+- Sender authority (manager, executive, key stakeholder)
+- Time sensitivity (deadlines, urgent requests)
+- Action required (tasks, decisions, approvals)
+- Business impact (revenue, customers, critical systems)
 
-### Models to Test
+For each important email, provide:
+- Subject line
+- Sender
+- Why it's important (1 sentence)
+- Key action items (bullet points)
+- Suggested priority level (Critical / High / Medium)
 
-| Model | Provider |
-|---|---|
-| GPT-Codex | OpenAI |
-| Claude Opus | Anthropic |
-| Gemini 3 Pro | Google |
-| Kimi 2.5 | Moonshot |
-
-### Evaluation Criteria
-- **Correctness** (50%) — Does the output meet the requirements?
-- **Quality** (30%) — Is it well-structured, clear, and useful?
-- **Reasoning** (10%) — Is the thought process logical and traceable?
-- **Cost Penalty** (10%) — Penalize expensive models slightly
-
-### Execution Plan
-- 20 test cases × 5 repetitions = **100 runs per model**
-- 4 models = **400 total evaluations**
-- Estimated time: **~2 minutes**
-- All results tracked via Weave for full observability`;
+Input emails:
+{{emails}}
+\`\`\``;
 
 type Phase = "welcome" | "clarifying" | "planning" | "ready";
 
@@ -119,7 +111,7 @@ export default function ChatPage() {
       setUserPrompt(text);
       setTimeout(() => typeMessage(CLARIFYING_MSG, false, "clarifying"), 600);
     } else if (phase === "clarifying") {
-      setTimeout(() => typeMessage(PLAN_MSG, true, "ready"), 600);
+      setTimeout(() => typeMessage(PROMPT_MSG, true, "ready"), 600);
     }
   };
 
@@ -143,7 +135,7 @@ export default function ChatPage() {
             <Zap className="w-4 h-4 text-white" />
           </div>
           <h1 className="text-lg font-semibold text-white tracking-tight">
-            PromptArena
+            Swarm
           </h1>
         </div>
         <div className="flex items-center gap-2 text-xs text-arena-muted">
@@ -153,8 +145,8 @@ export default function ChatPage() {
       </header>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-6">
-        <div className="max-w-3xl mx-auto space-y-4">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-6">
+        <div className="max-w-3xl mx-auto min-w-0 space-y-4">
           <AnimatePresence mode="popLayout">
             {messages.map((msg, i) => (
               <motion.div
@@ -165,7 +157,7 @@ export default function ChatPage() {
                 className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 <div
-                  className={`max-w-[85%] rounded-2xl px-5 py-3.5 ${
+                  className={`max-w-[85%] min-w-0 rounded-2xl px-5 py-3.5 overflow-hidden ${
                     msg.role === "user"
                       ? "bg-arena-accent/20 border border-arena-accent/30 text-white"
                       : msg.isPlan
@@ -173,7 +165,7 @@ export default function ChatPage() {
                         : "bg-arena-card border border-arena-border"
                   }`}
                 >
-                  <div className="prose prose-invert prose-sm max-w-none [&_table]:w-full [&_th]:text-left [&_th]:p-2 [&_th]:border-b [&_th]:border-arena-border [&_td]:p-2 [&_td]:border-b [&_td]:border-arena-border/50 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:text-white [&_h3]:text-base [&_h3]:text-white/90 [&_strong]:text-white [&_p]:text-arena-text/90 [&_li]:text-arena-text/90">
+                  <div className="prose prose-invert prose-sm max-w-none break-words [&_pre]:whitespace-pre-wrap [&_pre]:break-words [&_pre]:overflow-x-auto [&_code]:break-words [&_table]:w-full [&_th]:text-left [&_th]:p-2 [&_th]:border-b [&_th]:border-arena-border [&_td]:p-2 [&_td]:border-b [&_td]:border-arena-border/50 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:text-white [&_h3]:text-base [&_h3]:text-white/90 [&_strong]:text-white [&_p]:text-arena-text/90 [&_li]:text-arena-text/90">
                     <ReactMarkdown>{msg.content}</ReactMarkdown>
                   </div>
                   {msg.isPlan && phase === "ready" && (
@@ -188,7 +180,7 @@ export default function ChatPage() {
                         className="w-full py-3 px-6 rounded-xl bg-gradient-to-r from-arena-accent to-arena-blue text-white font-semibold text-sm flex items-center justify-center gap-2 hover:opacity-90 transition-opacity cursor-pointer"
                       >
                         <Check className="w-4 h-4" />
-                        Approve & Start Arena
+                        Start Swarm
                       </button>
                     </motion.div>
                   )}
@@ -204,8 +196,8 @@ export default function ChatPage() {
               animate={{ opacity: 1, y: 0 }}
               className="flex justify-start"
             >
-              <div className="max-w-[85%] rounded-2xl px-5 py-3.5 bg-arena-card border border-arena-border">
-                <div className="prose prose-invert prose-sm max-w-none [&_table]:w-full [&_th]:text-left [&_th]:p-2 [&_th]:border-b [&_th]:border-arena-border [&_td]:p-2 [&_td]:border-b [&_td]:border-arena-border/50 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:text-white [&_h3]:text-base [&_h3]:text-white/90 [&_strong]:text-white [&_p]:text-arena-text/90 [&_li]:text-arena-text/90">
+              <div className="max-w-[85%] min-w-0 rounded-2xl px-5 py-3.5 bg-arena-card border border-arena-border overflow-hidden">
+                <div className="prose prose-invert prose-sm max-w-none break-words [&_pre]:whitespace-pre-wrap [&_pre]:break-words [&_pre]:overflow-x-auto [&_code]:break-words [&_table]:w-full [&_th]:text-left [&_th]:p-2 [&_th]:border-b [&_th]:border-arena-border [&_td]:p-2 [&_td]:border-b [&_td]:border-arena-border/50 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:text-white [&_h3]:text-base [&_h3]:text-white/90 [&_strong]:text-white [&_p]:text-arena-text/90 [&_li]:text-arena-text/90">
                   <ReactMarkdown>{displayedContent}</ReactMarkdown>
                 </div>
               </div>
@@ -262,7 +254,7 @@ export default function ChatPage() {
             </button>
           </div>
           <p className="text-center text-xs text-arena-muted mt-3">
-            PromptArena generates synthetic test data and evaluates across
+            Swarm generates synthetic test data and evaluates across
             multiple AI models
           </p>
         </div>

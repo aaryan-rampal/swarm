@@ -359,7 +359,7 @@ export default function SwarmPage() {
             <Zap className="w-4 h-4 text-white" />
           </div>
           <h1 className="text-lg font-semibold text-white tracking-tight">
-            PromptArena
+            Swarm
           </h1>
         </div>
         <div className="flex items-center gap-4">
