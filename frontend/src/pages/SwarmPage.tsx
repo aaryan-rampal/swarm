@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, ArrowRight, Eye, RotateCcw } from "lucide-react";
-import { useApp } from "../store";
+import { useApp, fetchJudgeSweep } from "../store";
 
 const STORAGE_KEY = "swarm-eval-status";
 
@@ -351,7 +351,9 @@ function StreamingModal({
 
 export default function SwarmPage() {
   const navigate = useNavigate();
-  const { userPrompt, addEval } = useApp();
+  const { userPrompt, addEval, setJudgeResult } = useApp();
+  const [judging, setJudging] = useState(false);
+  const [judgeError, setJudgeError] = useState<string | null>(null);
   const [progresses, setProgresses] = useState<Record<string, number>>(() => {
     const persisted = loadPersistedStatus();
     if (persisted?.allDone) return persisted.progresses;
@@ -394,9 +396,21 @@ export default function SwarmPage() {
     const done = MODELS.every((m) => (progresses[m.id] ?? 0) >= 100);
     if (done && !allDone) {
       setAllDone(true);
-      addEval(userPrompt || "Email triage summary");
+      setJudging(true);
+      setJudgeError(null);
+      fetchJudgeSweep()
+        .then((result) => {
+          setJudgeResult(result);
+          addEval(userPrompt || "Email triage summary", result);
+        })
+        .catch((err) => {
+          console.error("Judge sweep failed:", err);
+          setJudgeError(String(err));
+          addEval(userPrompt || "Email triage summary");
+        })
+        .finally(() => setJudging(false));
     }
-  }, [progresses, allDone, userPrompt, addEval]);
+  }, [progresses, allDone, userPrompt, addEval, setJudgeResult]);
 
   useEffect(() => {
     savePersistedStatus(progresses, allDone);
@@ -421,12 +435,15 @@ export default function SwarmPage() {
       <div className="px-6 py-3 border-b border-arena-border/50 bg-arena-surface/40 shrink-0">
         <div className="flex items-center justify-between text-xs text-arena-muted">
           <span>
-            {MODELS.filter((m) => (progresses[m.id] ?? 0) >= 100).length}/
-            {MODELS.length} models complete
+            {judging
+              ? "Judging responses with Gemini 2.5 Flash..."
+              : judgeError
+                ? "Judge failed — using cached scores"
+                : `${MODELS.filter((m) => (progresses[m.id] ?? 0) >= 100).length}/${MODELS.length} models complete`}
           </span>
           <div className="flex items-center gap-4">
             <span>400 total evaluations</span>
-            {allDone && (
+            {allDone && !judging && (
               <>
                 <motion.button
                   initial={{ opacity: 0, x: 10 }}
