@@ -52,3 +52,47 @@ curl -X POST "http://127.0.0.1:8000/brainstorm/full-test" \
 ```
 
 This returns a single payload containing `synthetic_data`, `judging_criteria`, and `prompt_template`, and logs each model call as a Weave-traced operation.
+
+## 6) Swarm SSE sample flow
+
+Create a brainstorming session:
+
+```bash
+curl -X POST "http://127.0.0.1:8000/api/planner/sessions"
+```
+
+Send a message and mark direction ready for confirm:
+
+```bash
+curl -X POST "http://127.0.0.1:8000/api/planner/sessions/<session_id>/messages" \
+  -H "Content-Type: application/json" \
+  -d '{"message":"Summarize my top important emails."}'
+```
+
+Confirm to spawn the sample swarm run:
+
+```bash
+curl -X POST "http://127.0.0.1:8000/api/planner/sessions/<session_id>/confirm"
+```
+
+Stream run events via SSE:
+
+```bash
+curl -N "http://127.0.0.1:8000/api/runs/<run_id>/stream"
+```
+
+Replay run events (cursor optional):
+
+```bash
+curl "http://127.0.0.1:8000/api/runs/<run_id>/events"
+```
+
+Sample scenario files live in:
+
+- `app/scenarios/email_priority/emails.json`
+- `app/scenarios/email_priority/prompt.md`
+- `app/scenarios/email_priority/evaluation.md`
+
+The latest committed SSE sample output is in:
+
+- `artifacts/sse/sample_output.txt`
