@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from app.model_registry import load_models
