@@ -3,6 +3,35 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, ArrowRight, Eye, RotateCcw, Loader2 } from "lucide-react";
 
+const STORAGE_KEY = "swarm-run-state";
+
+interface PersistedRun {
+  modelStates: Record<string, ModelState>;
+  allDone: boolean;
+}
+
+function loadPersistedRun(): PersistedRun | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PersistedRun;
+    if (!parsed.modelStates || typeof parsed.allDone !== "boolean") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function savePersistedRun(modelStates: Record<string, ModelState>, allDone: boolean) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ modelStates, allDone }));
+  } catch { /* quota / privacy errors */ }
+}
+
+function clearPersistedRun() {
+  try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+}
+
 interface ModelConfig {
   id: string;
   name: string;
@@ -192,6 +221,14 @@ export default function SwarmPage() {
   );
 
   useEffect(() => {
+    const persisted = loadPersistedRun();
+    if (persisted && persisted.allDone) {
+      setModelStates(persisted.modelStates);
+      setAllDone(true);
+      setLoading(false);
+      return;
+    }
+
     let cancelled = false;
 
     async function startSwarm() {
@@ -309,6 +346,13 @@ export default function SwarmPage() {
     };
   }, [runKey]);
 
+  // Persist to localStorage whenever a run completes
+  useEffect(() => {
+    if (allDone && Object.keys(modelStates).length > 0) {
+      savePersistedRun(modelStates, allDone);
+    }
+  }, [allDone, modelStates]);
+
   const getProgress = useCallback(
     (ms: ModelState): number => {
       const base = (ms.completedReps / ms.totalReps) * 100;
@@ -342,6 +386,7 @@ export default function SwarmPage() {
   }, []);
 
   const handleNewRun = useCallback(() => {
+    clearPersistedRun();
     eventSourceRef.current?.close();
     setModelStates({});
     setAllDone(false);
