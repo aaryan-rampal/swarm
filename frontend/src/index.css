@@ -1,0 +1,126 @@
+@import "tailwindcss";
+
+@theme {
+  --color-arena-bg: #06060e;
+  --color-arena-surface: #0d0d1a;
+  --color-arena-card: #13131f;
+  --color-arena-border: #1e1e32;
+  --color-arena-accent: #8b5cf6;
+  --color-arena-blue: #3b82f6;
+  --color-arena-green: #10b981;
+  --color-arena-orange: #f97316;
+  --color-arena-purple: #a855f7;
+  --color-arena-text: #e2e8f0;
+  --color-arena-muted: #64748b;
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-arena-bg);
+  color: var(--color-arena-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+@keyframes orbit {
+  from {
+    transform: rotate(0deg) translateX(var(--orbit-radius)) rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg) translateX(var(--orbit-radius)) rotate(-360deg);
+  }
+}
+
+@keyframes orbit-reverse {
+  from {
+    transform: rotate(360deg) translateX(var(--orbit-radius)) rotate(-360deg);
+  }
+  to {
+    transform: rotate(0deg) translateX(var(--orbit-radius)) rotate(0deg);
+  }
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.4);
+  }
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.swarm-particle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border-radius: 9999px;
+  pointer-events: none;
+  animation: orbit var(--orbit-duration) linear infinite;
+  --orbit-radius: var(--radius);
+}
+
+.swarm-particle.reverse {
+  animation-name: orbit-reverse;
+}
+
+.swarm-particle.pulse {
+  animation:
+    orbit var(--orbit-duration) linear infinite,
+    pulse-dot var(--pulse-duration) ease-in-out infinite;
+}
+
+.progress-ring-circle {
+  transition: stroke-dashoffset 0.35s;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1e1e32;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #2e2e42;
+}
