@@ -25,18 +25,18 @@ export default function Layout() {
       {/* Sidebar */}
       <aside className="w-56 flex flex-col border-r border-arena-border shrink-0">
         {/* Logo */}
-        <div className="px-5 pt-5 pb-4">
+        <div className="px-4 pt-4 pb-3">
           <button
             onClick={() => navigate("/")}
-            className="flex items-center gap-2.5 cursor-pointer"
+            className="flex items-center gap-3 cursor-pointer"
           >
             <img
               src="/swarm.png"
               alt="Swarm"
-              className="w-7 h-7 rounded-md object-cover"
+              className="w-11 h-11 rounded-lg object-cover shrink-0"
             />
             <span
-              className="text-lg text-arena-text"
+              className="text-xl text-arena-text"
               style={{ fontFamily: "var(--font-serif)", fontWeight: 500 }}
             >
               Swarm
