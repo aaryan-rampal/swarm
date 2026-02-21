@@ -24,6 +24,7 @@ class SwarmRuntime:
             "status": "active",
             "messages": [],
             "draft_prompt": "",
+            "draft_spec": None,
             "ready_to_confirm": False,
             "created_at": now_iso(),
         }

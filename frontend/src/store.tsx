@@ -36,6 +36,10 @@ interface AppState {
   setUserPrompt: (p: string) => void;
   evals: EvalEntry[];
   addEval: (prompt: string) => void;
+  sessionId: string | null;
+  setSessionId: (id: string | null) => void;
+  runId: string | null;
+  setRunId: (id: string | null) => void;
 }
 
 const AppContext = createContext<AppState | null>(null);
@@ -57,8 +61,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setEvals((prev) => [entry, ...prev]);
   };
 
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [runId, setRunId] = useState<string | null>(null);
+
   return (
-    <AppContext.Provider value={{ userPrompt, setUserPrompt, evals, addEval }}>
+    <AppContext.Provider
+      value={{
+        userPrompt,
+        setUserPrompt,
+        evals,
+        addEval,
+        sessionId,
+        setSessionId,
+        runId,
+        setRunId,
+      }}
+    >
       {children}
     </AppContext.Provider>
   );

@@ -16,36 +16,65 @@ from app.swarm_runtime import runtime
 
 _MAX_CONCURRENCY = 10
 
+_DEFAULT_EVALUATION = (
+    "Evaluate the output for correctness, relevance, and quality."
+)
 
-def _load_scenario() -> dict:
+
+def normalize_spec(spec: dict[str, Any]) -> dict[str, Any]:
+    """Normalize arbitrary planner JSON to canonical {prompt, input_data, evaluation}."""
+    prompt = spec.get("prompt_template") or spec.get("prompt")
+    if not prompt:
+        raise ValueError("Spec must contain 'prompt_template' or 'prompt'")
+    raw_input = (
+        spec.get("input_data")
+        or spec.get("emails")
+        or spec.get("data")
+        or {}
+    )
+    # If planner output emails as top-level array, wrap for consistency
+    input_data = {"emails": raw_input} if isinstance(raw_input, list) else raw_input
+    evaluation = (
+        spec.get("evaluation")
+        or spec.get("rubric")
+        or _DEFAULT_EVALUATION
+    )
+    return {
+        "prompt": prompt,
+        "input_data": input_data,
+        "evaluation": evaluation,
+    }
+
+
+def _load_scenario() -> dict[str, Any]:
     scenario_dir = Path("app/scenarios/email_priority")
     emails = json.loads((scenario_dir / "emails.json").read_text(encoding="utf-8"))
     prompt = (scenario_dir / "prompt.md").read_text(encoding="utf-8")
     evaluation = (scenario_dir / "evaluation.md").read_text(encoding="utf-8")
     return {
-        "emails": emails,
         "prompt": prompt,
+        "input_data": emails,
         "evaluation": evaluation,
     }
 
 
 def _build_messages(scenario: dict[str, Any]) -> list[dict[str, str]]:
+    input_data = scenario.get("input_data") or {}
     return [
         {
             "role": "system",
             "content": (
-                "You are a rigorous inbox triage assistant. Narrate what you are"
-                " doing out loud while you analyze and rank emails. Speak in natural"
-                " first-person commentary, concise but explicit, grounded only in the"
-                " provided inbox and rubric."
+                "You are a rigorous assistant. Narrate what you are doing out loud"
+                " while you analyze. Speak in natural first-person commentary,"
+                " concise but explicit, grounded only in the provided data and rubric."
             ),
         },
         {
             "role": "user",
             "content": (
                 f"{scenario['prompt']}\n\n"
-                "Inbox dataset JSON:\n"
-                f"{json.dumps(scenario['emails'])}\n\n"
+                "Input data:\n"
+                f"{json.dumps(input_data)}\n\n"
                 "Evaluation rubric:\n"
                 f"{scenario['evaluation']}"
             ),
@@ -172,11 +201,15 @@ async def run_swarm(
     run_id: UUID,
     models: list[ModelSpec],
     reps: int = 5,
+    spec: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Run all models x reps in parallel. Returns list of per-run results."""
     settings = get_settings()
     weave_project = settings.weave_project
-    scenario = _load_scenario()
+    if spec is not None:
+        scenario = normalize_spec(spec)
+    else:
+        scenario = _load_scenario()
     messages = _build_messages(scenario)
     semaphore = asyncio.Semaphore(_MAX_CONCURRENCY)
 
