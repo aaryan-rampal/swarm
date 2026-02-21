@@ -115,13 +115,12 @@ class SwarmRuntime:
             encoding="utf-8",
         )
 
-        output_path = output_dir / "sample_output.txt"
-        output_path.write_text(
-            sample_text,
-            encoding="utf-8",
-        )
-        run["sse_sample_path"] = str(output_path)
-        return str(output_path)
+        sample_output_path = output_dir / "sample_output.txt"
+        if not sample_output_path.exists():
+            sample_output_path.write_text(sample_text, encoding="utf-8")
+
+        run["sse_sample_path"] = str(run_output_path)
+        return str(run_output_path)
 
 
 runtime = SwarmRuntime()
